@@ -1,4 +1,4 @@
-const ALLOWED_USER_ID = 6461362381; // Ganti dengan user ID kamu sendiri
+const ALLOWED_USER_ID = 5646190352; // Ganti dengan user ID kamu sendiri
 const servervless = 'jkrstvn.dpdns.org';
 const userSession = {};
 const userRateLimit = {};
@@ -29,7 +29,7 @@ const proxies = [
 ];
   
 // Token bot Telegram
-const TELEGRAM_BOT_TOKEN = '8058546118:AAE6N40FYZCZbwskUs_o7t5Fmf794DxgLKs';
+const TELEGRAM_BOT_TOKEN = '7550889633:AAHYYwJWqL8wbwYc0ZesIja1FoQOvcac_ss';
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Webhook handler
@@ -237,9 +237,10 @@ async function handleMessage(text, chatId, messageId, userId) {
   }
 }
 
+// Fungsi utama handleWildcardCommand
 async function handleWildcardCommand(text, chatId, messageId, userId) {
   if (userId !== ALLOWED_USER_ID) {
-    return await sendMessage(chatId, "❌ Kamu tidak punya akses untuk perintah ini.", messageId, {
+    return await sendMessage(chatId, "❌ Kamu tidak punya akses untuk perintah ini.", {
       reply_to_message_id: messageId,
     });
   }
@@ -284,7 +285,8 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
       });
     }
 
-    return await sendMessage(chatId, `✅ Subdomain *${fullSub}* berhasil ditambahkan.`, messageId, {
+    return await sendMessage(chatId, `✅ Subdomain *${fullSub}* berhasil ditambahkan.`, {
+      reply_to_message_id: messageId,
       parse_mode: "Markdown",
     });
   }
@@ -299,7 +301,6 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
       });
     }
 
-    // Hapus DNS record
     const deleted = await deleteDnsRecord(record.id);
 
     if (deleted) {
@@ -318,6 +319,33 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
   return await sendMessage(chatId, "❌ Perintah tidak dikenal.", {
     reply_to_message_id: messageId,
   });
+}
+
+// Fungsi untuk mengecek DNS record
+async function checkDnsRecord(name) {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=${name}`, {
+    headers: {
+      Authorization: `Bearer ${CF_API_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  const data = await res.json();
+  return data.success && data.result.length > 0 ? data.result[0] : null;
+}
+
+// Fungsi untuk menghapus DNS record
+async function deleteDnsRecord(recordId) {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${recordId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${CF_API_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  const data = await res.json();
+  return data.success;
 }
 
 async function handleCommand(command, chatId, messageId) {
@@ -881,7 +909,7 @@ async function editMessageText(chatId, messageId, text, options = {}) {
 }
 
 async function sendPhoto(chatId, photoUrl, options = {}) {
-  const token = "8058546118:AAE6N40FYZCZbwskUs_o7t5Fmf794DxgLKs"; // ganti sesuai nama variabel token kamu
+  const token = "7550889633:AAHYYwJWqL8wbwYc0ZesIja1FoQOvcac_ss"; // ganti sesuai nama variabel token kamu
   const url = `https://api.telegram.org/bot${token}/sendPhoto`;
 
   const body = {
