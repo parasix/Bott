@@ -1,4 +1,4 @@
-const ALLOWED_USER_ID = 5646190352; // Ganti dengan user ID kamu sendiri
+const ALLOWED_USER_ID = 6461362381; // Ganti dengan user ID kamu sendiri
 const servervless = 'jkrstvn.dpdns.org';
 const userSession = {};
 const userRateLimit = {};
@@ -329,21 +329,66 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
         Authorization: `Bearer ${CF_API_TOKEN}`,
         "Content-Type": "application/json",
       },
+async function handleWildcardCommand(text, chatId, messageId, userId) {
+  if (userId !== ALLOWED_USER_ID) {
+    return await sendMessage(chatId, "❌ Kamu tidak punya akses untuk perintah ini.", messageId, {
+      reply_to_message_id: messageId,
+    });
+  }
+
+  const [cmd, rawSub] = text.split(" ");
+
+  if (!rawSub || !/^[a-zA-Z0-9.-]+$/.test(rawSub)) {
+    return await sendMessage(chatId, "❌ Format subdomain tidak valid. Contoh: /addwildcard sub.domain.com", {
+      reply_to_message_id: messageId,
+    });
+  }
+
+  const sub = rawSub.endsWith(`.${BASE_DOMAIN}`)
+    ? rawSub.replace(`.${BASE_DOMAIN}`, "")
+    : rawSub;
+
+  const fullSub = `${sub}.${BASE_DOMAIN}`;
+
+  if (cmd === "/addwildcard") {
+    const dnsBody = {
+      type: "CNAME",
+      name: fullSub,
+      content: rawSub,
+      ttl: 1,
+      proxied: true,
+    };
+
+    const dnsRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CF_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(dnsBody),
     });
 
-    const routesData = await routesRes.json();
+    const dnsData = await dnsRes.json();
 
-    if (routesData.success) {
-      const matchedRoute = routesData.result.find(route => route.pattern === `${fullSub}/*`);
-      if (matchedRoute) {
-        await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/workers/routes/${matchedRoute.id}`, {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${CF_API_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-        });
-      }
+    if (!dnsData.success) {
+      return await sendMessage(chatId, `❌ Gagal menambahkan DNS record: ${dnsData.errors?.[0]?.message || "Unknown error"}`, {
+        reply_to_message_id: messageId,
+      });
+    }
+
+    return await sendMessage(chatId, `✅ Subdomain *${fullSub}* berhasil ditambahkan.`, messageId, {
+      parse_mode: "Markdown",
+    });
+  }
+
+  if (cmd === "/delwildcard") {
+    const record = await checkDnsRecord(fullSub);
+
+    if (!record) {
+      return await sendMessage(chatId, `❌ Subdomain *${fullSub}* tidak ditemukan.`, {
+        reply_to_message_id: messageId,
+        parse_mode: "Markdown",
+      });
     }
 
     // Hapus DNS record
