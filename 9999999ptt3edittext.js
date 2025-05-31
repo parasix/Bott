@@ -359,7 +359,7 @@ async function sendAllProxyStatus(chatId, messageId = null) {
     { id: 15, server: '(ID) Rumahweb 🇮🇩', host: '203.194.112.119', port: 8443, path: '/id-rmhwb' },
   ];
 
-  const results = await Promise.allSettled(proxies.map(checkProxy));
+  const results = await Promise.allSettled(proxies.map(checkProxy2));
 
   let statusText = `\`\`\`🔍Status:\n`;
 
