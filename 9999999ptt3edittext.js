@@ -23,7 +23,7 @@ const proxies = [
 ];
   
 // Token bot Telegram
-const TELEGRAM_BOT_TOKEN = '7869958204:AAGJf4x0XQ7CX-vOQDS52QuucLj_md-EzFY';
+const TELEGRAM_BOT_TOKEN = '8058546118:AAE6N40FYZCZbwskUs_o7t5Fmf794DxgLKs';
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Webhook handler
@@ -790,7 +790,7 @@ async function editMessageText(chatId, messageId, text, options = {}) {
 }
 
 async function sendPhoto(chatId, photoUrl, options = {}) {
-  const token = "7869958204:AAGJf4x0XQ7CX-vOQDS52QuucLj_md-EzFY"; // ganti sesuai nama variabel token kamu
+  const token = "8058546118:AAE6N40FYZCZbwskUs_o7t5Fmf794DxgLKs"; // ganti sesuai nama variabel token kamu
   const url = `https://api.telegram.org/bot${token}/sendPhoto`;
 
   const body = {
