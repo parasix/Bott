@@ -5,7 +5,7 @@ const userRateLimit = {};
 const RATE_LIMIT_SECONDS = 10;
 const BASE_DOMAIN = 'jkrstvn.dpdns.org';
 const CF_ZONE_ID = 'dfee4264946a8202989a2b5d20201a94';
-const CF_API_TOKEN = 'hGFRG_9apkZJhy7kYdIPaQZ6ULzBFjbmdxlnhk-B';
+const CF_API_TOKEN = 'DUdnnD6qDV4TUhooEXkeGZnrc3sMVlpjKhouwHce';
 const WORKER_SCRIPT_NAME = 'jkrstvnn';// Nama Worker script kamu
 
 
