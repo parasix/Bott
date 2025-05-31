@@ -5,7 +5,7 @@ const userRateLimit = {};
 const RATE_LIMIT_SECONDS = 10;
 const BASE_DOMAIN = 'mstke3.dpdns.org';
 const CF_ZONE_ID = '18de9b546e311e0e9a517ad0b56388d5';
-const CF_API_TOKEN = 'LLTb898uujviKJvYjQIfurdP6VStjkjuY7ycjSn6';
+const CF_API_TOKEN = 'S0hPCjO5Gf-myuulibSWlRmHHPq00CYK8ilYpwAO';
 const WORKER_SCRIPT_NAME = 'jkrstvnn';// Nama Worker script kamu
 
 
