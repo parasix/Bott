@@ -5,7 +5,7 @@ const userRateLimit = {};
 const RATE_LIMIT_SECONDS = 10;
 const BASE_DOMAIN = 'mstke3.dpdns.org';
 const CF_ZONE_ID = '18de9b546e311e0e9a517ad0b56388d5';
-const CF_API_TOKEN = 'S0hPCjO5Gf-myuulibSWlRmHHPq00CYK8ilYpwAO';
+const CF_API_TOKEN = 'yqnkUkTU6XWNmgbWIC3LHq7FLmKm6_G9q598aT39';
 const WORKER_SCRIPT_NAME = 'jkrstvnn';// Nama Worker script kamu
 
 
@@ -240,19 +240,19 @@ async function handleMessage(text, chatId, messageId, userId) {
 // Fungsi utama handleWildcardCommand
 async function handleWildcardCommand(text, chatId, messageId, userId) {
   if (userId !== ALLOWED_USER_ID) {
-    return await sendMessage(chatId, "❌ Kamu tidak punya akses untuk perintah ini.", {
+    return await sendMessage(chatId, "❌ Kamu tidak punya akses untuk perintah ini.", messageId, {
       reply_to_message_id: messageId,
     });
   }
 
   const [cmd, rawSub] = text.split(" ");
-
   if (!rawSub || !/^[a-zA-Z0-9.-]+$/.test(rawSub)) {
-    return await sendMessage(chatId, "❌ Format subdomain tidak valid. Contoh: /addwildcard sub.domain.com", {
+    return await sendMessage(chatId, "❌ Format subdomain tidak valid.", {
       reply_to_message_id: messageId,
     });
   }
 
+  // Hilangkan jika rawSub sudah mengandung base domain
   const sub = rawSub.endsWith(`.${BASE_DOMAIN}`)
     ? rawSub.replace(`.${BASE_DOMAIN}`, "")
     : rawSub;
@@ -260,6 +260,7 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
   const fullSub = `${sub}.${BASE_DOMAIN}`;
 
   if (cmd === "/addwildcard") {
+    // 1. Tambah DNS record CNAME
     const dnsBody = {
       type: "CNAME",
       name: fullSub,
@@ -276,7 +277,6 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
       },
       body: JSON.stringify(dnsBody),
     });
-
     const dnsData = await dnsRes.json();
 
     if (!dnsData.success) {
@@ -285,15 +285,47 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
       });
     }
 
-    return await sendMessage(chatId, `✅ Subdomain *${fullSub}* berhasil ditambahkan.`, {
-      reply_to_message_id: messageId,
-      parse_mode: "Markdown",
+    // 2. Tambah Route Worker otomatis
+    // Pastikan API Token punya akses untuk workers/routes edit
+    const routePattern = `${fullSub}/*`;
+    const routeBody = {
+      pattern: routePattern,
+      script: WORKER_SCRIPT_NAME,
+    };
+
+    // Ambil zone id dari API /zones, kalau belum tahu hardcode CF_ZONE_ID
+    const routeRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/workers/routes`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CF_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(routeBody),
     });
-  }
+
+    const routeData = await routeRes.json();
+
+    if (!routeData.success) {
+      // Jika gagal hapus DNS record biar bersih
+      await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${dnsData.result.id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${CF_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      return await sendMessage(chatId, `❌ Gagal menambahkan Worker route: ${routeData.errors?.[0]?.message || "Unknown error"}`, {
+        reply_to_message_id: messageId,
+      });
+    }
+
+    return await sendMessage(chatId, `✅ Subdomain *${fullSub}* berhasil ditambahkan.`, messageId, { parse_mode: "Markdown" });
+}
 
   if (cmd === "/delwildcard") {
+    // Cari record DNS
     const record = await checkDnsRecord(fullSub);
-
     if (!record) {
       return await sendMessage(chatId, `❌ Subdomain *${fullSub}* tidak ditemukan.`, {
         reply_to_message_id: messageId,
@@ -301,6 +333,28 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
       });
     }
 
+    // Hapus route Worker
+    const routesRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/workers/routes`, {
+      headers: {
+        Authorization: `Bearer ${CF_API_TOKEN}`,
+      },
+    });
+    const routesData = await routesRes.json();
+
+    if (routesData.success) {
+      const matchedRoute = routesData.result.find(r => r.pattern === `${fullSub}/*`);
+      if (matchedRoute) {
+        await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/workers/routes/${matchedRoute.id}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${CF_API_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        });
+      }
+    }
+
+    // Hapus DNS record
     const deleted = await deleteDnsRecord(record.id);
 
     if (deleted) {
@@ -309,10 +363,7 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
         parse_mode: "Markdown",
       });
     } else {
-      return await sendMessage(chatId, `❌ Gagal menghapus subdomain *${fullSub}*.`, {
-        reply_to_message_id: messageId,
-        parse_mode: "Markdown",
-      });
+      return await sendMessage(chatId, `❌ Gagal menghapus subdomain *${fullSub}*.`, messageId, { parse_mode: "Markdown" });
     }
   }
 
@@ -321,20 +372,20 @@ async function handleWildcardCommand(text, chatId, messageId, userId) {
   });
 }
 
-// Fungsi untuk mengecek DNS record
-async function checkDnsRecord(name) {
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=${name}`, {
+async function checkDnsRecord(fullSub) {
+  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=${fullSub}`, {
     headers: {
       Authorization: `Bearer ${CF_API_TOKEN}`,
       "Content-Type": "application/json",
     },
   });
-
   const data = await res.json();
-  return data.success && data.result.length > 0 ? data.result[0] : null;
+  if (data.success && data.result.length > 0) {
+    return data.result[0];
+  }
+  return null;
 }
 
-// Fungsi untuk menghapus DNS record
 async function deleteDnsRecord(recordId) {
   const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${recordId}`, {
     method: "DELETE",
@@ -343,7 +394,6 @@ async function deleteDnsRecord(recordId) {
       "Content-Type": "application/json",
     },
   });
-
   const data = await res.json();
   return data.success;
 }
