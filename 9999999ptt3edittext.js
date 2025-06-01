@@ -114,7 +114,7 @@ async function handleRequest(request) {
   if (url.pathname === "/webhook") {
     try {
       const update = await request.json();
-      console.log(">> UPDATE:", JSON.stringify(update, null, 2));
+      console.log("UPDATE:", JSON.stringify(update, null, 2));
 
       if (update.message) {
         const chatId = update.message.chat.id;
@@ -129,66 +129,71 @@ async function handleRequest(request) {
         const chatId = update.callback_query.message.chat.id;
         const messageId = update.callback_query.message.message_id;
         const data = update.callback_query.data;
-        console.log("✅ CALLBACK QUERY:", data);
 
-        const [action, value, extra] = data.split(":");
+        const parts = data.split(":");
+        const action = parts[0];
+        const value = parts[1];
+        const extra = parts[2];
 
-        switch (action) {
-          case "vless": {
-            await generateVlessConfig(chatId, value, messageId);
-            break;
+        // ===== Sistem lama (berbasis proxy ID) =====
+        if (action === 'vless') {
+          const proxyId = value;
+          await generateVlessConfig(chatId, proxyId, messageId);
+        } else if (action === 'method') {
+          const proxyId = extra;
+          await handleMethodSelection(chatId, value, proxyId, messageId); // no/wildcard/sni
+        } else if (action === 'no') {
+          const proxyId = extra;
+          const selectedProxy = proxies.find(p => p.id == proxyId);
+          if (!selectedProxy) {
+            await sendMessage(chatId, "❌ Proxy tidak ditemukan. Pilih proxy yang tersedia.", {}, messageId);
+          } else {
+            await generateConfigNoWS(chatId, proxyId, messageId);
+          }
+        } else if (action === 'wildcard' || action === 'sni') {
+          const domain = value;
+          const proxyId = extra;
+
+          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
+            parse_mode: "MarkdownV2"
+          });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            await deleteMessage(chatId, messageId);
+          } catch (e) {
+            console.warn("Gagal menghapus pesan:", e.message);
           }
 
-          case "linktype": {
-            await handleMethodSelection(chatId, value, messageId);
-            break;
+          if (action === 'wildcard') {
+            await generateConfigWithWildcard(chatId, domain, proxyId, messageId);
+          } else {
+            await generateConfigWithSni(chatId, domain, proxyId, messageId);
+          }
+        }
+
+        // ===== Sistem baru: /getlinksub =====
+        else if (action === 'linktype') {
+          await handleMethodGetlink(chatId, value, messageId); // clash / vless
+        } else if (action === 'method_getlink') {
+          await handleSubdomainSelection(chatId, value, extra, messageId); // no / wildcard / sni
+        } else if (action === 'wildcard_getlink' || action === 'sni_getlink') {
+          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
+            parse_mode: "MarkdownV2"
+          });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            await deleteMessage(chatId, messageId);
+          } catch (e) {
+            console.warn("Gagal menghapus pesan:", e.message);
           }
 
-          case "method": {
-            if (extra === "clash" || extra === "vless") {
-              await handleSubdomainSelection(chatId, value, extra, messageId);
-            } else {
-              await handleMethodSelection(chatId, value, extra, messageId);
-            }
-            break;
+          if (action === 'wildcard_getlink') {
+            await generateConfigWithWildcard(chatId, value, extra, messageId);
+          } else {
+            await generateConfigWithSni(chatId, value, extra, messageId);
           }
-
-          case "no": {
-            const proxyId = extra;
-            const selectedProxy = proxies.find(p => p.id == proxyId);
-            if (!selectedProxy) {
-              await sendMessage(chatId, "❌ Proxy tidak ditemukan.", {}, messageId);
-            } else {
-              await generateConfigNoWS(chatId, proxyId, messageId);
-            }
-            break;
-          }
-
-          case "wildcard":
-          case "sni": {
-            await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu...\n```", {
-              parse_mode: "MarkdownV2"
-            });
-
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            try {
-              await deleteMessage(chatId, messageId);
-            } catch (e) {
-              console.warn("Gagal hapus pesan:", e.message);
-            }
-
-            if (action === "wildcard") {
-              await generateConfigWithWildcard(chatId, value, extra, messageId);
-            } else {
-              await generateConfigWithSni(chatId, value, extra, messageId);
-            }
-            break;
-          }
-
-          default: {
-            await sendMessage(chatId, "❌ Aksi tidak dikenal.");
-            break;
-          }
+        } else {
+          await sendMessage(chatId, "❌ Aksi tidak dikenal.");
         }
 
         return new Response('OK');
@@ -720,17 +725,16 @@ async function handleGetLinkSub(chatId, messageId) {
   });
 }
 
-async function handleMethodSelection(chatId, linkType, messageId) {
+async function handleMethodGetlink(chatId, linkType, messageId) {
   const keyboard = {
     inline_keyboard: [
       [
-        { text: 'Tidak', callback_data: `method:no:${linkType}` },
-        { text: 'Wildcard', callback_data: `method:wildcard:${linkType}` }
+        { text: 'Tidak', callback_data: `method_getlink:no:${linkType}` },
+        { text: 'Wildcard', callback_data: `method_getlink:wildcard:${linkType}` }
       ],
-      [{ text: 'SNI', callback_data: `method:sni:${linkType}` }]
+      [{ text: 'SNI', callback_data: `method_getlink:sni:${linkType}` }]
     ]
   };
-
   await editMessageText(chatId, messageId, '🔌 Pilih metode inject:', {
     reply_markup: keyboard
   });
@@ -738,27 +742,22 @@ async function handleMethodSelection(chatId, linkType, messageId) {
 
 async function handleSubdomainSelection(chatId, method, linkType, messageId) {
   let list = [];
-
-  if (method === 'wildcard') {
-    list = wildcardList;
-  } else if (method === 'sni') {
-    list = sniList;
-  }
+  if (method === 'wildcard') list = wildcardList;
+  if (method === 'sni') list = sniList;
 
   if (method === 'no') {
     const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=no&bug=mstkkee3.biz.id`;
     const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *no*\nSubdomain : *mstkkee3.biz.id*\nLink : ${link}`;
-
     return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
   }
 
   const keyboard = {
     inline_keyboard: list.map(domain => {
-      return [{ text: domain, callback_data: `${method}:${domain}:${linkType}` }];
+      return [{ text: domain, callback_data: `${method}_getlink:${domain}:${linkType}` }];
     })
   };
 
-  return await editMessageText(chatId, messageId, '🌐 Pilih salah satu subdomain:', {
+  return await editMessageText(chatId, messageId, `🌐 Pilih salah satu subdomain:`, {
     reply_markup: keyboard,
     parse_mode: 'Markdown'
   });
@@ -769,24 +768,21 @@ async function generateConfigNoWS(chatId, linkType, messageId) {
   const domain = 'mstkkee3.biz.id';
   const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=no&bug=${bugServer}`;
   const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *no*\nSubdomain : *${domain}*\nLink : ${link}`;
-
   return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
 }
 
-async function generateConfigWithWildcard(chatId, wildcard, linkType, messageId) {
-  const bugServer = `${wildcard}.${servervless}`;
+async function generateConfigWithWildcard(chatId, domain, linkType, messageId) {
+  const bugServer = `${domain}.${servervless}`;
   const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=wildcard&bug=${bugServer}`;
   const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *wildcard*\nSubdomain : *${bugServer}*\nLink : ${link}`;
-
-  return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
+  return await sendMessage(chatId, text, { parse_mode: 'Markdown' });
 }
 
-async function generateConfigWithSni(chatId, sni, linkType, messageId) {
-  const bugServer = `${sni}.${servervless}`;
+async function generateConfigWithSni(chatId, domain, linkType, messageId) {
+  const bugServer = `${domain}.${servervless}`;
   const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=sni&bug=${bugServer}`;
   const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *sni*\nSubdomain : *${bugServer}*\nLink : ${link}`;
-
-  return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
+  return await sendMessage(chatId, text, { parse_mode: 'Markdown' });
 }
 
 async function sendTemporaryMessage(chatId, text, replyToMessageId = null) {
