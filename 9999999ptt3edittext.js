@@ -116,6 +116,7 @@ async function handleRequest(request) {
       const update = await request.json();
       console.log(">> UPDATE:", JSON.stringify(update, null, 2));
 
+      // 🔸 Handle pesan biasa
       if (update.message) {
         const chatId = update.message.chat.id;
         const messageId = update.message.message_id;
@@ -125,6 +126,7 @@ async function handleRequest(request) {
         await handleMessage(text, chatId, messageId, userId);
       }
 
+      // 🔸 Handle callback query
       if (update.callback_query) {
         const chatId = update.callback_query.message.chat.id;
         const messageId = update.callback_query.message.message_id;
@@ -135,7 +137,7 @@ async function handleRequest(request) {
         const value = parts[1];
         const extra = parts[2];
 
-        // 🔹 Handle config lama berbasis proxy ID
+        // 🔹 Sistem lama: berdasarkan ID proxy
         if (action === 'vless') {
           const proxyId = value;
           if (proxyId) {
@@ -143,10 +145,18 @@ async function handleRequest(request) {
           }
         }
 
+        // 🔹 Menangani "method" (dipakai di sistem lama & baru)
         else if (action === 'method') {
-          await handleMethodSelection(chatId, value, extra, messageId); // value: no/wildcard/sni, extra: proxyId
+          if (extra === 'vless' || extra === 'clash') {
+            // Sistem baru: getlinksub
+            await handleSubdomainSelection(chatId, value, extra, messageId);
+          } else {
+            // Sistem lama: berdasarkan ID proxy
+            await handleMethodSelection(chatId, value, extra, messageId);
+          }
         }
 
+        // 🔹 Sistem lama: tanpa metode
         else if (action === 'no') {
           const proxyId = extra;
           const selectedProxy = proxies.find(p => p.id == proxyId);
@@ -157,9 +167,10 @@ async function handleRequest(request) {
           }
         }
 
+        // 🔹 Digunakan oleh sistem lama & getlinksub
         else if (action === 'wildcard' || action === 'sni') {
           const domain = value;
-          const proxyId = extra;
+          const linkTypeOrProxyId = extra;
 
           await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
             parse_mode: "MarkdownV2"
@@ -173,38 +184,15 @@ async function handleRequest(request) {
           }
 
           if (action === 'wildcard') {
-            await generateConfigWithWildcard(chatId, domain, proxyId, messageId);
+            await generateConfigWithWildcard(chatId, domain, linkTypeOrProxyId, messageId);
           } else {
-            await generateConfigWithSni(chatId, domain, proxyId, messageId);
+            await generateConfigWithSni(chatId, domain, linkTypeOrProxyId, messageId);
           }
         }
 
-        // 🔹 Handle sistem baru: getlinksub
+        // 🔹 Sistem baru: getlinksub - pilih jenis link
         else if (action === 'linktype') {
-          await handleMethodSelection(chatId, value, messageId); // value: clash / vless
-        }
-
-        else if (action === 'method') {
-          await handleSubdomainSelection(chatId, value, extra, messageId); // value: no / sni / wildcard, extra: clash/vless
-        }
-
-        else if (action === 'wildcard' || action === 'sni') {
-          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-            parse_mode: "MarkdownV2"
-          });
-
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          try {
-            await deleteMessage(chatId, messageId);
-          } catch (e) {
-            console.warn("Gagal menghapus pesan:", e.message);
-          }
-
-          if (action === 'wildcard') {
-            await generateConfigWithWildcard(chatId, value, extra, messageId);
-          } else {
-            await generateConfigWithSni(chatId, value, extra, messageId);
-          }
+          await handleMethodSelection(chatId, value, messageId); // value: vless / clash
         }
 
         else {
