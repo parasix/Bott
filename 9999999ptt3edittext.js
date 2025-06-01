@@ -1,13 +1,7 @@
-const ALLOWED_USER_ID = 5646190352; // Ganti dengan user ID kamu sendiri
 const servervless = 'mstke3.dpdns.org';
 const userSession = {};
 const userRateLimit = {};
 const RATE_LIMIT_SECONDS = 10;
-const BASE_DOMAIN = 'mstke3.dpdns.org';
-const CF_ZONE_ID = '18de9b546e311e0e9a517ad0b56388d5';
-const CF_API_TOKEN = 'yqnkUkTU6XWNmgbWIC3LHq7FLmKm6_G9q598aT39';
-const WORKER_SCRIPT_NAME = 'jkrstvnn';// Nama Worker script kamu
-
 
 // Daftar proxy yang tersedia
 const proxies = [
@@ -29,7 +23,7 @@ const proxies = [
 ];
   
 // Token bot Telegram
-const TELEGRAM_BOT_TOKEN = '7550889633:AAHYYwJWqL8wbwYc0ZesIja1FoQOvcac_ss';
+const TELEGRAM_BOT_TOKEN = '7557864997:AAHfIzz6ZA_8Bs9M-_m7EcU5J_g5kVRwrzs';
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Webhook handler
@@ -228,175 +222,12 @@ async function handleMessage(text, chatId, messageId, userId) {
       if (text === '/listsni') return await sendSniList(chatId, messageId);
       if (text === '/allstatus') return await sendAllProxyStatus(chatId, messageId);
       if (text === "/donasi") return await handleCommand("/donasi", chatId, messageId);
-      if (text.startsWith("/addwildcard") || text.startsWith("/delwildcard")) {
-    return await handleWildcardCommand(text, chatId, messageId, userId);
-  }
 
-  if (text.includes(":")) {
-    return await checkProxyByUserInput(chatId, text, messageId);
-  }
-}
-
-// Fungsi utama handleWildcardCommand
-async function handleWildcardCommand(text, chatId, messageId, userId) {
-  if (userId !== ALLOWED_USER_ID) {
-    return await sendMessage(chatId, "❌ Kamu tidak punya akses untuk perintah ini.", messageId, {
-      reply_to_message_id: messageId,
-    });
-  }
-
-  const [cmd, rawSub] = text.split(" ");
-  if (!rawSub || !/^[a-zA-Z0-9.-]+$/.test(rawSub)) {
-    return await sendMessage(chatId, "❌ Format subdomain tidak valid.", {
-      reply_to_message_id: messageId,
-    });
-  }
-
-  // Hilangkan jika rawSub sudah mengandung base domain
-  const sub = rawSub.endsWith(`.${BASE_DOMAIN}`)
-    ? rawSub.replace(`.${BASE_DOMAIN}`, "")
-    : rawSub;
-
-  const fullSub = `${sub}.${BASE_DOMAIN}`;
-
-  if (cmd === "/addwildcard") {
-    // 1. Tambah DNS record CNAME
-    const dnsBody = {
-      type: "CNAME",
-      name: fullSub,
-      content: rawSub,
-      ttl: 1,
-      proxied: true,
-    };
-
-    const dnsRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${CF_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(dnsBody),
-    });
-    const dnsData = await dnsRes.json();
-
-    if (!dnsData.success) {
-      return await sendMessage(chatId, `❌ Gagal menambahkan DNS record: ${dnsData.errors?.[0]?.message || "Unknown error"}`, {
-        reply_to_message_id: messageId,
-      });
-    }
-
-    // 2. Tambah Route Worker otomatis
-    // Pastikan API Token punya akses untuk workers/routes edit
-    const routePattern = `${fullSub}/*`;
-    const routeBody = {
-      pattern: routePattern,
-      script: WORKER_SCRIPT_NAME,
-    };
-
-    // Ambil zone id dari API /zones, kalau belum tahu hardcode CF_ZONE_ID
-    const routeRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/workers/routes`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${CF_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(routeBody),
-    });
-
-    const routeData = await routeRes.json();
-
-    if (!routeData.success) {
-      // Jika gagal hapus DNS record biar bersih
-      await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${dnsData.result.id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${CF_API_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      return await sendMessage(chatId, `❌ Gagal menambahkan Worker route: ${routeData.errors?.[0]?.message || "Unknown error"}`, {
-        reply_to_message_id: messageId,
-      });
-    }
-
-    return await sendMessage(chatId, `✅ Subdomain *${fullSub}* berhasil ditambahkan.`, messageId, { parse_mode: "Markdown" });
-}
-
-  if (cmd === "/delwildcard") {
-    // Cari record DNS
-    const record = await checkDnsRecord(fullSub);
-    if (!record) {
-      return await sendMessage(chatId, `❌ Subdomain *${fullSub}* tidak ditemukan.`, {
-        reply_to_message_id: messageId,
-        parse_mode: "Markdown",
-      });
-    }
-
-    // Hapus route Worker
-    const routesRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/workers/routes`, {
-      headers: {
-        Authorization: `Bearer ${CF_API_TOKEN}`,
-      },
-    });
-    const routesData = await routesRes.json();
-
-    if (routesData.success) {
-      const matchedRoute = routesData.result.find(r => r.pattern === `${fullSub}/*`);
-      if (matchedRoute) {
-        await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/workers/routes/${matchedRoute.id}`, {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${CF_API_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-        });
+      // Cek status proxy berdasarkan IP:Port
+      if (text.includes(':')) {
+        return await checkProxyByUserInput(chatId, text, messageId);
       }
     }
-
-    // Hapus DNS record
-    const deleted = await deleteDnsRecord(record.id);
-
-    if (deleted) {
-      return await sendMessage(chatId, `✅ Subdomain *${fullSub}* berhasil dihapus.`, {
-        reply_to_message_id: messageId,
-        parse_mode: "Markdown",
-      });
-    } else {
-      return await sendMessage(chatId, `❌ Gagal menghapus subdomain *${fullSub}*.`, messageId, { parse_mode: "Markdown" });
-    }
-  }
-
-  return await sendMessage(chatId, "❌ Perintah tidak dikenal.", {
-    reply_to_message_id: messageId,
-  });
-}
-
-async function checkDnsRecord(fullSub) {
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records?name=${fullSub}`, {
-    headers: {
-      Authorization: `Bearer ${CF_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-  });
-  const data = await res.json();
-  if (data.success && data.result.length > 0) {
-    return data.result[0];
-  }
-  return null;
-}
-
-async function deleteDnsRecord(recordId) {
-  const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/dns_records/${recordId}`, {
-    method: "DELETE",
-    headers: {
-      Authorization: `Bearer ${CF_API_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-  });
-  const data = await res.json();
-  return data.success;
-}
 
 async function handleCommand(command, chatId, messageId) {
   if (command === "/donasi") {
@@ -493,7 +324,7 @@ help.viu.com.mstkkee3.biz.id
 }
 
 
-async function checkProxy2(proxy) {
+async function checkProxy(proxy) {
     try {
         const response = await fetch(`https://api.bodong.workers.dev/?key=masbodong&ip=${proxy.host}:${proxy.port}`);
         if (!response.ok) throw new Error("API tidak merespons dengan benar");
@@ -528,7 +359,7 @@ async function sendAllProxyStatus(chatId, messageId = null) {
     { id: 15, server: '(ID) Rumahweb 🇮🇩', host: '203.194.112.119', port: 8443, path: '/id-rmhwb' },
   ];
 
-  const results = await Promise.allSettled(proxies.map(checkProxy2));
+  const results = await Promise.allSettled(proxies.map(checkProxy));
 
   let statusText = `\`\`\`🔍Status:\n`;
 
@@ -959,7 +790,7 @@ async function editMessageText(chatId, messageId, text, options = {}) {
 }
 
 async function sendPhoto(chatId, photoUrl, options = {}) {
-  const token = "7550889633:AAHYYwJWqL8wbwYc0ZesIja1FoQOvcac_ss"; // ganti sesuai nama variabel token kamu
+  const token = "7557864997:AAHfIzz6ZA_8Bs9M-_m7EcU5J_g5kVRwrzs"; // ganti sesuai nama variabel token kamu
   const url = `https://api.telegram.org/bot${token}/sendPhoto`;
 
   const body = {
