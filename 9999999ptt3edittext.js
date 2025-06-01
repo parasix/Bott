@@ -729,8 +729,8 @@ async function handleGetLinkSub(chatId, messageId) {
   const keyboard = {
     inline_keyboard: [
       [
-        { text: 'VLESS', callback_data: `linktype:vless` },
-        { text: 'Clash', callback_data: `linktype:clash` }
+        { text: 'VLESS', callback_data: 'linktype:vless' },
+        { text: 'Clash', callback_data: 'linktype:clash' }
       ]
     ]
   };
@@ -778,7 +778,7 @@ async function handleSubdomainSelection(chatId, method, linkType, messageId) {
     })
   };
 
-  return await editMessageText(chatId, messageId, `🌐 Pilih salah satu subdomain:`, {
+  return await editMessageText(chatId, messageId, '🌐 Pilih salah satu subdomain:', {
     reply_markup: keyboard,
     parse_mode: 'Markdown'
   });
@@ -793,16 +793,15 @@ async function generateConfigNoWS(chatId, linkType, messageId) {
   return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
 }
 
-async function generateConfigWithWildcard(chatId, domain, linkType, messageId) {
+async function generateConfigWithWildcard(chatId, wildcard, linkType, messageId) {
   const bugServer = `${wildcard}.${servervless}`;
-  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=wildcard&bug=${wildcard}`;
+  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=wildcard&bug=${bugServer}`;
   const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *wildcard*\nSubdomain : *${bugServer}*\nLink : ${link}`;
 
   return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
 }
 
-
-async function generateConfigWithSni(chatId, domain, linkType, messageId) {
+async function generateConfigWithSni(chatId, sni, linkType, messageId) {
   const bugServer = `${sni}.${servervless}`;
   const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=sni&bug=${bugServer}`;
   const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *sni*\nSubdomain : *${bugServer}*\nLink : ${link}`;
