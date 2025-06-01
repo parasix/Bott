@@ -900,5 +900,6 @@ async function sendPhoto(chatId, photoUrl, options = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
+  }
 }
 
