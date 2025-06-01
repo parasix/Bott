@@ -114,7 +114,7 @@ async function handleRequest(request) {
   if (url.pathname === "/webhook") {
     try {
       const update = await request.json();
-      console.log("UPDATE:", JSON.stringify(update, null, 2));
+      console.log(">> UPDATE:", JSON.stringify(update, null, 2));
 
       if (update.message) {
         const chatId = update.message.chat.id;
@@ -130,33 +130,42 @@ async function handleRequest(request) {
         const messageId = update.callback_query.message.message_id;
         const data = update.callback_query.data;
 
-        const parts = data.split(":");
+        const parts = data.split(':');
         const action = parts[0];
         const value = parts[1];
         const extra = parts[2];
 
-        // ===== Sistem lama (berbasis proxy ID) =====
+        // 🟡 Sistem lama: berbasis proxy ID
         if (action === 'vless') {
           const proxyId = value;
-          await generateVlessConfig(chatId, proxyId, messageId);
-        } else if (action === 'method') {
-          const proxyId = extra;
-          await handleMethodSelection(chatId, value, proxyId, messageId); // no/wildcard/sni
-        } else if (action === 'no') {
-          const proxyId = extra;
-          const selectedProxy = proxies.find(p => p.id == proxyId);
-          if (!selectedProxy) {
-            await sendMessage(chatId, "❌ Proxy tidak ditemukan. Pilih proxy yang tersedia.", {}, messageId);
-          } else {
-            await generateConfigNoWS(chatId, proxyId, messageId);
+          if (proxyId) {
+            await generateVlessConfig(chatId, proxyId, messageId);
           }
-        } else if (action === 'wildcard' || action === 'sni') {
-          const domain = value;
-          const proxyId = extra;
+        }
+
+        // 🟢 Sistem baru: /getlinksub
+        else if (action === 'linktype') {
+          // value: vless / clash
+          await handleMethodSelection(chatId, value, messageId);
+        }
+
+        else if (action === 'method') {
+          // value: no / wildcard / sni
+          if (value === 'no') {
+            await generateConfigNoWS(chatId, extra, messageId); // extra = clash/vless
+          } else {
+            await handleSubdomainSelection(chatId, value, extra, messageId);
+          }
+        }
+
+        else if (action === 'wildcard' || action === 'sni') {
+          const domain = value; // subdomain
+          const linkType = extra; // clash/vless
 
           await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
             parse_mode: "MarkdownV2"
           });
+
           await new Promise(resolve => setTimeout(resolve, 2000));
           try {
             await deleteMessage(chatId, messageId);
@@ -165,41 +174,21 @@ async function handleRequest(request) {
           }
 
           if (action === 'wildcard') {
-            await generateConfigWithWildcard(chatId, domain, proxyId, messageId);
+            await generateConfigWithWildcard(chatId, domain, linkType, messageId);
           } else {
-            await generateConfigWithSni(chatId, domain, proxyId, messageId);
+            await generateConfigWithSni(chatId, domain, linkType, messageId);
           }
         }
 
-        // ===== Sistem baru: /getlinksub =====
-        else if (action === 'linktype') {
-          await handleMethodGetlink(chatId, value, messageId); // clash / vless
-        } else if (action === 'method_getlink') {
-          await handleSubdomainSelection(chatId, value, extra, messageId); // no / wildcard / sni
-        } else if (action === 'wildcard_getlink' || action === 'sni_getlink') {
-          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-            parse_mode: "MarkdownV2"
-          });
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          try {
-            await deleteMessage(chatId, messageId);
-          } catch (e) {
-            console.warn("Gagal menghapus pesan:", e.message);
-          }
-
-          if (action === 'wildcard_getlink') {
-            await generateConfigWithWildcard(chatId, value, extra, messageId);
-          } else {
-            await generateConfigWithSni(chatId, value, extra, messageId);
-          }
-        } else {
+        // 🔴 Tidak dikenali
+        else {
           await sendMessage(chatId, "❌ Aksi tidak dikenal.");
         }
 
-        return new Response('OK');
+        return new Response("OK");
       }
 
-      return new Response('OK');
+      return new Response("OK");
     } catch (err) {
       console.error("Webhook Error:", err);
       return new Response("Internal Server Error", { status: 500 });
