@@ -129,77 +129,86 @@ async function handleRequest(request) {
         const chatId = update.callback_query.message.chat.id;
         const messageId = update.callback_query.message.message_id;
         const data = update.callback_query.data;
+
         const parts = data.split(':');
         const action = parts[0];
+        const value = parts[1];
+        const extra = parts[2];
 
-        switch (action) {
-          case 'vless': {
-            const proxyId = parts[1];
-            if (proxyId) {
-              await generateVlessConfig(chatId, proxyId, messageId);
-            }
-            break;
+        // 🔹 Handle config lama berbasis proxy ID
+        if (action === 'vless') {
+          const proxyId = value;
+          if (proxyId) {
+            await generateVlessConfig(chatId, proxyId, messageId);
           }
+        }
 
-          case 'method': {
-            const method = parts[1];
-            const proxyId = parts[2];
-            await handleMethodSelection(chatId, method, proxyId, messageId);
-            break;
-          }
+        else if (action === 'method') {
+          await handleMethodSelection(chatId, value, extra, messageId); // value: no/wildcard/sni, extra: proxyId
+        }
 
-          case 'no': {
-            const proxyId = parts[2];
-            const selectedProxy = proxies.find(p => p.id == proxyId);
-            if (!selectedProxy) {
-              await sendMessage(chatId, "❌ Proxy tidak ditemukan. Pilih proxy yang tersedia.", {}, messageId);
-              break;
-            }
+        else if (action === 'no') {
+          const proxyId = extra;
+          const selectedProxy = proxies.find(p => p.id == proxyId);
+          if (!selectedProxy) {
+            await sendMessage(chatId, "❌ Proxy tidak ditemukan. Pilih proxy yang tersedia.", {}, messageId);
+          } else {
             await generateConfigNoWS(chatId, proxyId, messageId);
-            break;
+          }
+        }
+
+        else if (action === 'wildcard' || action === 'sni') {
+          const domain = value;
+          const proxyId = extra;
+
+          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
+            parse_mode: "MarkdownV2"
+          });
+
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            await deleteMessage(chatId, messageId);
+          } catch (e) {
+            console.warn("Gagal menghapus pesan:", e.message);
           }
 
-          case 'wildcard': {
-            const wildcard = parts[1];
-            const proxyId = parts[2];
+          if (action === 'wildcard') {
+            await generateConfigWithWildcard(chatId, domain, proxyId, messageId);
+          } else {
+            await generateConfigWithSni(chatId, domain, proxyId, messageId);
+          }
+        }
 
-            await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-              parse_mode: "MarkdownV2"
-            });
+        // 🔹 Handle sistem baru: getlinksub
+        else if (action === 'linktype') {
+          await handleMethodSelection(chatId, value, messageId); // value: clash / vless
+        }
 
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            try {
-              await deleteMessage(chatId, messageId);
-            } catch (e) {
-              console.warn("Gagal menghapus pesan:", e.message);
-            }
+        else if (action === 'method') {
+          await handleSubdomainSelection(chatId, value, extra, messageId); // value: no / sni / wildcard, extra: clash/vless
+        }
 
-            await generateConfigWithWildcard(chatId, wildcard, proxyId, messageId);
-            break;
+        else if (action === 'wildcard' || action === 'sni') {
+          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
+            parse_mode: "MarkdownV2"
+          });
+
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            await deleteMessage(chatId, messageId);
+          } catch (e) {
+            console.warn("Gagal menghapus pesan:", e.message);
           }
 
-          case 'sni': {
-            const sni = parts[1];
-            const proxyId = parts[2];
-
-            await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-              parse_mode: "MarkdownV2"
-            });
-
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            try {
-              await deleteMessage(chatId, messageId);
-            } catch (e) {
-              console.warn("Gagal menghapus pesan:", e.message);
-            }
-
-            await generateConfigWithSni(chatId, sni, proxyId, messageId);
-            break;
+          if (action === 'wildcard') {
+            await generateConfigWithWildcard(chatId, value, extra, messageId);
+          } else {
+            await generateConfigWithSni(chatId, value, extra, messageId);
           }
+        }
 
-          default:
-            await sendMessage(chatId, "❌ Aksi tidak dikenal.");
-            break;
+        else {
+          await sendMessage(chatId, "❌ Aksi tidak dikenal.");
         }
 
         return new Response('OK');
@@ -222,6 +231,9 @@ async function handleMessage(text, chatId, messageId, userId) {
       if (text === '/listsni') return await sendSniList(chatId, messageId);
       if (text === '/allstatus') return await sendAllProxyStatus(chatId, messageId);
       if (text === "/donasi") return await handleCommand("/donasi", chatId, messageId);
+      if (text === '/getlinksub') {
+    return await handleGetLinkSub(chatId, messageId);
+      
 
       // Cek status proxy berdasarkan IP:Port
       if (text.includes(':')) {
@@ -711,6 +723,91 @@ proxies:
     console.error("generateConfigWithSniERROR:", error);
     return sendMessage(chatId, errorMsg, { parse_mode: "Markdown" });
   }
+}
+
+async function handleGetLinkSub(chatId, messageId) {
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: 'VLESS', callback_data: `linktype:vless` },
+        { text: 'Clash', callback_data: `linktype:clash` }
+      ]
+    ]
+  };
+
+  await sendMessage(chatId, '📡 Pilih jenis link yang ingin kamu ambil:', {
+    reply_markup: keyboard
+  });
+}
+
+async function handleMethodSelection(chatId, linkType, messageId) {
+  const keyboard = {
+    inline_keyboard: [
+      [
+        { text: 'Tidak', callback_data: `method:no:${linkType}` },
+        { text: 'Wildcard', callback_data: `method:wildcard:${linkType}` }
+      ],
+      [{ text: 'SNI', callback_data: `method:sni:${linkType}` }]
+    ]
+  };
+
+  await editMessageText(chatId, messageId, '🔌 Pilih metode inject:', {
+    reply_markup: keyboard
+  });
+}
+
+async function handleSubdomainSelection(chatId, method, linkType, messageId) {
+  let list = [];
+
+  if (method === 'wildcard') {
+    list = wildcardList;
+  } else if (method === 'sni') {
+    list = sniList;
+  }
+
+  if (method === 'no') {
+    const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=no&bug=mstkkee3.biz.id`;
+    const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *no*\nSubdomain : *mstkkee3.biz.id*\nLink : ${link}`;
+
+    return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
+  }
+
+  const keyboard = {
+    inline_keyboard: list.map(domain => {
+      return [{ text: domain, callback_data: `${method}:${domain}:${linkType}` }];
+    })
+  };
+
+  return await editMessageText(chatId, messageId, `🌐 Pilih salah satu subdomain:`, {
+    reply_markup: keyboard,
+    parse_mode: 'Markdown'
+  });
+}
+
+async function generateConfigNoWS(chatId, linkType, messageId) {
+  const bugServer = `${servervless}`;
+  const domain = 'mstkkee3.biz.id';
+  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=no&bug=${bugServer}`;
+  const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *no*\nSubdomain : *${domain}*\nLink : ${link}`;
+
+  return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
+}
+
+async function generateConfigWithWildcard(chatId, domain, linkType, messageId) {
+  const bugServer = `${wildcard}.${servervless}`;
+  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=wildcard&bug=${wildcard}`;
+  const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *wildcard*\nSubdomain : *${bugServer}*\nLink : ${link}`;
+
+  return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
+}
+
+
+async function generateConfigWithSni(chatId, domain, linkType, messageId) {
+  const bugServer = `${sni}.${servervless}`;
+  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=sni&bug=${bugServer}`;
+  const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *sni*\nSubdomain : *${bugServer}*\nLink : ${link}`;
+
+  return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
 }
 
 async function sendTemporaryMessage(chatId, text, replyToMessageId = null) {
