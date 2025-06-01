@@ -135,29 +135,29 @@ async function handleRequest(request) {
         const value = parts[1];
         const extra = parts[2];
 
-        // ▶️ VLESS lama pakai ID
+        // ▶️ Handle sistem lama: klik ID proxy
         if (action === 'vless') {
           const proxyId = value;
           await generateVlessConfig(chatId, proxyId, messageId);
         }
 
-        // ▶️ Pilih jenis link (getlinksub)
+        // ▶️ Handle sistem getlinksub: pilih jenis link
         else if (action === 'linktype') {
-          await handleMethodSelection(chatId, value, messageId); // value = vless / clash
+          await handleMethodSelection(chatId, value, messageId); // value = clash / vless
         }
 
-        // ▶️ Pilih metode inject (sama untuk lama & getlinksub)
+        // ▶️ Handle pilihan metode inject (berlaku untuk dua sistem)
         else if (action === 'method') {
-          // Kalau extra berisi clash/vless → getlinksub
-          if (extra === 'vless' || extra === 'clash') {
+          // Jika extra = clash / vless → berarti getlinksub
+          if (extra === 'clash' || extra === 'vless') {
             await handleSubdomainSelection(chatId, value, extra, messageId);
           } else {
-            // Kalau extra berisi proxyId → sistem lama
+            // Jika extra = proxyId → sistem lama
             await handleMethodSelection(chatId, value, extra, messageId);
           }
         }
 
-        // ▶️ Tanpa inject (sistem lama)
+        // ▶️ Untuk metode no inject sistem lama
         else if (action === 'no') {
           const proxyId = extra;
           const selectedProxy = proxies.find(p => p.id == proxyId);
@@ -168,7 +168,7 @@ async function handleRequest(request) {
           }
         }
 
-        // ▶️ Wildcard & SNI (berlaku untuk dua sistem)
+        // ▶️ Handle wildcard & sni (dua-duanya sama, bisa dari lama atau getlinksub)
         else if (action === 'wildcard' || action === 'sni') {
           const domain = value;
           const linkTypeOrProxyId = extra;
@@ -180,7 +180,9 @@ async function handleRequest(request) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           try {
             await deleteMessage(chatId, messageId);
-          } catch (e) {}
+          } catch (e) {
+            console.warn("Gagal menghapus pesan:", e.message);
+          }
 
           if (action === 'wildcard') {
             await generateConfigWithWildcard(chatId, domain, linkTypeOrProxyId, messageId);
