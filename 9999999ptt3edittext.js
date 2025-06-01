@@ -129,70 +129,66 @@ async function handleRequest(request) {
         const chatId = update.callback_query.message.chat.id;
         const messageId = update.callback_query.message.message_id;
         const data = update.callback_query.data;
+        console.log("✅ CALLBACK QUERY:", data);
 
-        const parts = data.split(':');
-        const action = parts[0];
-        const value = parts[1];
-        const extra = parts[2];
+        const [action, value, extra] = data.split(":");
 
-        // ▶️ Handle sistem lama: klik ID proxy
-        if (action === 'vless') {
-          const proxyId = value;
-          await generateVlessConfig(chatId, proxyId, messageId);
-        }
-
-        // ▶️ Handle sistem getlinksub: pilih jenis link
-        else if (action === 'linktype') {
-          await handleMethodSelection(chatId, value, messageId); // value = clash / vless
-        }
-
-        // ▶️ Handle pilihan metode inject (berlaku untuk dua sistem)
-        else if (action === 'method') {
-          // Jika extra = clash / vless → berarti getlinksub
-          if (extra === 'clash' || extra === 'vless') {
-            await handleSubdomainSelection(chatId, value, extra, messageId);
-          } else {
-            // Jika extra = proxyId → sistem lama
-            await handleMethodSelection(chatId, value, extra, messageId);
-          }
-        }
-
-        // ▶️ Untuk metode no inject sistem lama
-        else if (action === 'no') {
-          const proxyId = extra;
-          const selectedProxy = proxies.find(p => p.id == proxyId);
-          if (!selectedProxy) {
-            await sendMessage(chatId, "❌ Proxy tidak ditemukan.", {}, messageId);
-          } else {
-            await generateConfigNoWS(chatId, proxyId, messageId);
-          }
-        }
-
-        // ▶️ Handle wildcard & sni (dua-duanya sama, bisa dari lama atau getlinksub)
-        else if (action === 'wildcard' || action === 'sni') {
-          const domain = value;
-          const linkTypeOrProxyId = extra;
-
-          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu...\n```", {
-            parse_mode: "MarkdownV2"
-          });
-
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          try {
-            await deleteMessage(chatId, messageId);
-          } catch (e) {
-            console.warn("Gagal menghapus pesan:", e.message);
+        switch (action) {
+          case "vless": {
+            await generateVlessConfig(chatId, value, messageId);
+            break;
           }
 
-          if (action === 'wildcard') {
-            await generateConfigWithWildcard(chatId, domain, linkTypeOrProxyId, messageId);
-          } else {
-            await generateConfigWithSni(chatId, domain, linkTypeOrProxyId, messageId);
+          case "linktype": {
+            await handleMethodSelection(chatId, value, messageId);
+            break;
           }
-        }
 
-        else {
-          await sendMessage(chatId, "❌ Aksi tidak dikenal.");
+          case "method": {
+            if (extra === "clash" || extra === "vless") {
+              await handleSubdomainSelection(chatId, value, extra, messageId);
+            } else {
+              await handleMethodSelection(chatId, value, extra, messageId);
+            }
+            break;
+          }
+
+          case "no": {
+            const proxyId = extra;
+            const selectedProxy = proxies.find(p => p.id == proxyId);
+            if (!selectedProxy) {
+              await sendMessage(chatId, "❌ Proxy tidak ditemukan.", {}, messageId);
+            } else {
+              await generateConfigNoWS(chatId, proxyId, messageId);
+            }
+            break;
+          }
+
+          case "wildcard":
+          case "sni": {
+            await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu...\n```", {
+              parse_mode: "MarkdownV2"
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            try {
+              await deleteMessage(chatId, messageId);
+            } catch (e) {
+              console.warn("Gagal hapus pesan:", e.message);
+            }
+
+            if (action === "wildcard") {
+              await generateConfigWithWildcard(chatId, value, extra, messageId);
+            } else {
+              await generateConfigWithSni(chatId, value, extra, messageId);
+            }
+            break;
+          }
+
+          default: {
+            await sendMessage(chatId, "❌ Aksi tidak dikenal.");
+            break;
+          }
         }
 
         return new Response('OK');
