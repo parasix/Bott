@@ -485,7 +485,7 @@ const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=1
     
     await sendPhoto(chatId, qrUrl, {
   caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',  // atau caption informatif
-  parse_mode: 'Markdown'
+  parse_mode: 'MarkdownV2'
 });
 
 const config = `
