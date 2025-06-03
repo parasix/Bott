@@ -162,7 +162,7 @@ async function handleRequest(request) {
           userRateLimit[chatId] = now;
 
           await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-            parse_mode: "Markdown",
+            parse_mode: "MarkdownV2",
           });
 
           await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -559,7 +559,7 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
     // Hapus tombol salin kode, jadi keyboard kosong atau bisa dihapus juga reply_markup
     await sendPhoto(chatId, qrUrl, {
   caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',  // atau caption informatif
-  parse_mode: 'Markdown'
+  parse_mode: 'MarkdownV2'
 });
 
     const config = `
@@ -604,12 +604,12 @@ proxies:
 ╰━━━━━━━━━━━━━━━━━━━━━╯  
 `;
 
-    return sendMessage(chatId, config, { parse_mode: "Markdown" });
+    return sendMessage(chatId, config, { parse_mode: "MarkdownV2" });
 
   } catch (error) {
     const errorMsg = `❌ Gagal membuat konfigurasi:\n<pre>${error.message}</pre>`;
     console.error("generateConfigWithWildcard ERROR:", error);
-    return sendMessage(chatId, errorMsg, { parse_mode: "Markdown" });
+    return sendMessage(chatId, errorMsg, { parse_mode: "MarkdownV2" });
   }
 }
 
