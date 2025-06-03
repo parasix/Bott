@@ -559,7 +559,7 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
     // Hapus tombol salin kode, jadi keyboard kosong atau bisa dihapus juga reply_markup
     await sendPhoto(chatId, qrUrl, {
   caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',  // atau caption informatif
-  parse_mode: 'MarkdownV2'
+  parse_mode: 'HTML'
 });
 
     const config = `
@@ -604,12 +604,12 @@ proxies:
 ╰━━━━━━━━━━━━━━━━━━━━━╯  
 `;
 
-    return sendMessage(chatId, config, { parse_mode: "MarkdownV2" });
+    return sendMessage(chatId, config, { parse_mode: "HTML" });
 
   } catch (error) {
     const errorMsg = `❌ Gagal membuat konfigurasi:\n<pre>${error.message}</pre>`;
     console.error("generateConfigWithWildcard ERROR:", error);
-    return sendMessage(chatId, errorMsg, { parse_mode: "MarkdownV2" });
+    return sendMessage(chatId, errorMsg, { parse_mode: "HTML" });
   }
 }
 
