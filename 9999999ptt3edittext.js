@@ -115,6 +115,7 @@ async function handleRequest(request) {
     try {
       const update = await request.json();
 
+      // HANDLE PESAN BIASA
       if (update.message) {
         const chatId = update.message.chat.id;
         const messageId = update.message.message_id;
@@ -129,72 +130,79 @@ async function handleRequest(request) {
           await handleMessage(text, chatId, messageId);
         }
 
-      } else if (update.callback_query) {
+        return new Response("OK");
+      }
+
+      // HANDLE CALLBACK QUERY
+      else if (update.callback_query) {
         const callbackQuery = update.callback_query;
         const dataParts = callbackQuery.data.split(":");
         const action = dataParts[0];
         const chatId = callbackQuery.message.chat.id;
         const messageId = callbackQuery.message.message_id;
 
-        if (action === "vless" && dataParts[1]) {
-          await generateVlessConfig(chatId, dataParts[1], messageId);
+        switch (action) {
+          case "vless":
+            if (dataParts[1]) {
+              await generateVlessConfig(chatId, dataParts[1], messageId);
+            }
+            break;
 
-        } else if (action === "method" && dataParts.length === 3) {
-          const method = dataParts[1];
-          const proxyId = dataParts[2];
-          await handleMethodSelection(chatId, method, proxyId, messageId);
+          case "method":
+            if (dataParts.length === 3) {
+              const method = dataParts[1];
+              const proxyId = dataParts[2];
+              await handleMethodSelection(chatId, method, proxyId, messageId);
+            }
+            break;
 
-        } else if (action === "wildcard" && dataParts.length === 3) {
-          const wildcard = dataParts[1];
-          const proxyId = dataParts[2];
+          case "wildcard": {
+            const wildcard = dataParts[1];
+            const proxyId = dataParts[2];
 
-          const now = Date.now();
-          const lastUsed = userRateLimit[chatId] || 0;
-
-          if (now - lastUsed < RATE_LIMIT_SECONDS * 1000) {
-            await answerCallbackQuery(callbackQuery.id, {
-              text: `⏳ Tunggu ${Math.ceil((RATE_LIMIT_SECONDS * 1000 - (now - lastUsed)) / 1000)} detik sebelum mencoba lagi.`,
-              show_alert: true
+            await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
+              parse_mode: "MarkdownV2"
             });
-            return new Response("OK");
+
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            try {
+              await deleteMessage(chatId, messageId);
+            } catch (e) {
+              console.warn("Gagal menghapus pesan:", e.message);
+            }
+
+            await generateConfigWithWildcard(chatId, wildcard, proxyId, messageId);
+            break;
           }
 
-          userRateLimit[chatId] = now;
+          case "sni": {
+            const sni = dataParts[1];
+            const proxyId = dataParts[2];
 
-          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-            parse_mode: "MarkdownV2",
-          });
+            await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
+              parse_mode: "MarkdownV2"
+            });
 
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          await deleteMessage(chatId, messageId);
-          await generateConfigWithWildcard(chatId, wildcard, proxyId, messageId);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            try {
+              await deleteMessage(chatId, messageId);
+            } catch (e) {
+              console.warn("Gagal menghapus pesan:", e.message);
+            }
 
-        } else if (action === "sni" && dataParts.length === 3) {
-          const sni = dataParts[1];
-          const proxyId = dataParts[2];
-
-          // Validasi SNI
-          if (!/^[a-zA-Z0-9.-]+$/.test(sni)) {
-            await sendMessage(chatId, "SNI tidak valid.", { reply_to_message_id: messageId });
-            return new Response("OK");
+            await generateConfigWithSni(chatId, sni, proxyId, messageId);
+            break;
           }
 
-          // Feedback visual "processing..."
-          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-            parse_mode: "MarkdownV2",
-          });
-
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          await deleteMessage(chatId, messageId); // Ini yang hilang di versi sebelumnya
-
-          await generateConfigWithSni(chatId, sni, proxyId, messageId);
+          default:
+            await sendMessage(chatId, "❌ Aksi tidak dikenal.");
+            break;
         }
 
         return new Response("OK");
       }
 
       return new Response("OK");
-
     } catch (err) {
       console.error("Webhook Error:", err);
       return new Response("Internal Server Error", { status: 500 });
@@ -559,7 +567,7 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
     // Hapus tombol salin kode, jadi keyboard kosong atau bisa dihapus juga reply_markup
     await sendPhoto(chatId, qrUrl, {
   caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',  // atau caption informatif
-  parse_mode: 'HTML'
+  parse_mode: 'Markdown'
 });
 
     const config = `
@@ -604,12 +612,12 @@ proxies:
 ╰━━━━━━━━━━━━━━━━━━━━━╯  
 `;
 
-    return sendMessage(chatId, config, { parse_mode: "HTML" });
+    return sendMessage(chatId, config, { parse_mode: "Markdown" });
 
   } catch (error) {
     const errorMsg = `❌ Gagal membuat konfigurasi:\n<pre>${error.message}</pre>`;
     console.error("generateConfigWithWildcard ERROR:", error);
-    return sendMessage(chatId, errorMsg, { parse_mode: "HTML" });
+    return sendMessage(chatId, errorMsg, { parse_mode: "Markdown" });
   }
 }
 
@@ -629,7 +637,7 @@ const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=1
     // Hapus tombol salin kode, jadi keyboard kosong atau bisa dihapus juga reply_markup
     await sendPhoto(chatId, qrUrl, {
   caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',  // atau caption informatif
-  parse_mode: 'HTML'
+  parse_mode: 'Markdown'
 });
 
 const config = `
@@ -675,12 +683,12 @@ proxies:
 ╰━━━━━━━━━━━━━━━━━━━━━╯  
 `;
 
-    return sendMessage(chatId, config, { parse_mode: "HTML" });
+    return sendMessage(chatId, config, { parse_mode: "Markdown" });
 
   } catch (error) {
     const errorMsg = `❌ Gagal membuat konfigurasi:\n<pre>${error.message}</pre>`;
     console.error("generateConfigWithSniERROR:", error);
-    return sendMessage(chatId, errorMsg, { parse_mode: "HTML" });
+    return sendMessage(chatId, errorMsg, { parse_mode: "Markdown" });
   }
 }
 
