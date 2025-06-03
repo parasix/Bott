@@ -552,7 +552,7 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
 
     const uuid = generateUUID();
     const bugServer = `${wildcard}.${servervless}`;
-    const vlessRawUrl = `\`\`\`VLESS\nvless://${uuid}@${wildcard}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=${selectedProxy.path}#${selectedProxy.server}\`\`\``;
+    const vlessRawUrl = `vless://${uuid}@${wildcard}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=${selectedProxy.path}#${selectedProxy.server}`;
 
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(vlessRawUrl)}`;
 
