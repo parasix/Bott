@@ -23,7 +23,7 @@ const proxies = [
 ];
   
 // Token bot Telegram
-const TELEGRAM_BOT_TOKEN = '7557864997:AAHfIzz6ZA_8Bs9M-_m7EcU5J_g5kVRwrzs';
+const TELEGRAM_BOT_TOKEN = '7653509231:AAEEaEv9FK6oMMtaEftPzjXOIZYzqAmB8Yg';
 const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
 // Webhook handler
@@ -32,7 +32,7 @@ addEventListener('fetch', event => {
 });
 
 
-async function checkProxy(proxy) {
+async function checkProxy2(proxy) {
   try {
     const response = await fetch(`https://api.bodong.workers.dev/?key=masbodong&ip=${proxy.host}:${proxy.port}`);
     const data = await response.json();
@@ -55,25 +55,23 @@ async function checkProxy(proxy) {
 }
 
 // Fungsi untuk memeriksa status proxy berdasarkan input pengguna (ip:port)
-async function checkProxyByUserInput(chatId, userInput, messageId) {
-  // Memisahkan input berdasarkan spasi atau enter
-  const proxies = userInput.split(/\s+|\n+/).map(proxy => proxy.trim()).filter(Boolean);
-
-  // Batasan maksimal proxy yang bisa diproses
+async function checkProxy2ByUserInput(chatId, userInput, replyToMessageId = null) {
+  const proxies = userInput.split(/\s+|\n+/).map(p => p.trim()).filter(Boolean);
   const MAX_PROXIES = 20;
+
   if (proxies.length > MAX_PROXIES) {
-    return sendMessage(chatId, `❌ Terlalu banyak proxy. Maksimal ${MAX_PROXIES} proxy per permintaan.`, null, messageId);
+    return sendMessage(chatId, `❌ Terlalu banyak proxy. Maksimal ${MAX_PROXIES} proxy per permintaan.`, replyToMessageId);
   }
 
   if (proxies.length === 0 || proxies.some(proxy => !proxy.includes(':'))) {
-    return sendMessage(chatId, "❌ Format salah. Harap kirim dalam format ip:port, contoh:\n`139.59.104.29:443`\n`192.168.1.1:8080`", null, messageId);
+    return sendMessage(chatId, "❌ Format salah. Harap kirim dalam format ip:port, contoh:\n`139.59.104.29:443`\n`192.168.1.1:8080`", replyToMessageId, { parse_mode: "Markdown" });
   }
 
-  // Kirim pesan sementara bahwa bot sedang memeriksa status proxy
+  // Kirim pesan sementara dengan reply ke pesan user
   const processingMessage = await sendTemporaryMessage(chatId, `
-\`\`\`PROCESSING\nSedang memeriksa status proxy, mohon tunggu...\`\`\``, messageId);
+\`\`\`PROCESSING\nSedang memeriksa status proxy, mohon tunggu...\`\`\``, replyToMessageId);
 
-  let allStatusText = `\`\`\`🔍Status:\n`;
+  let allStatusText = "```🔍Status:\n";
 
   const checkPromises = proxies.map(async (proxyInput) => {
     const [ip, port] = proxyInput.split(':');
@@ -101,8 +99,10 @@ async function checkProxyByUserInput(chatId, userInput, messageId) {
   });
 
   const results = await Promise.all(checkPromises);
+
   allStatusText += results.join("") + "```";
 
+  // Gantikan pesan sementara dengan hasil menggunakan editMessageText
   return editMessageText(chatId, processingMessage.message_id, allStatusText, {
     parse_mode: "MarkdownV2"
   });
@@ -114,81 +114,87 @@ async function handleRequest(request) {
   if (url.pathname === "/webhook") {
     try {
       const update = await request.json();
-      console.log(">> UPDATE:", JSON.stringify(update, null, 2));
 
       if (update.message) {
         const chatId = update.message.chat.id;
         const messageId = update.message.message_id;
         const text = update.message.text?.trim();
-        const userId = update.message.from.id;
 
-        await handleMessage(text, chatId, messageId, userId);
-      }
+        if (userSession[chatId]?.method === "ws" && userSession[chatId]?.proxyId) {
+          const proxyId = userSession[chatId].proxyId;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          delete userSession[chatId];
+          await generateConfigWithBug(chatId, text, proxyId, messageId);
+        } else {
+          await handleMessage(text, chatId, messageId);
+        }
 
-      if (update.callback_query) {
-        const chatId = update.callback_query.message.chat.id;
-        const messageId = update.callback_query.message.message_id;
-        const data = update.callback_query.data;
+      } else if (update.callback_query) {
+        const callbackQuery = update.callback_query;
+        const dataParts = callbackQuery.data.split(":");
+        const action = dataParts[0];
+        const chatId = callbackQuery.message.chat.id;
+        const messageId = callbackQuery.message.message_id;
 
-        const parts = data.split(':');
-        const action = parts[0];
-        const value = parts[1];
-        const extra = parts[2];
+        if (action === "vless" && dataParts[1]) {
+          await generateVlessConfig(chatId, dataParts[1], messageId);
 
-        // 🟡 Sistem lama: berbasis proxy ID
-        if (action === 'vless') {
-          const proxyId = value;
-          if (proxyId) {
-            await generateVlessConfig(chatId, proxyId, messageId);
+        } else if (action === "method" && dataParts.length === 3) {
+          const method = dataParts[1];
+          const proxyId = dataParts[2];
+          await handleMethodSelection(chatId, method, proxyId, messageId);
+
+        } else if (action === "wildcard" && dataParts.length === 3) {
+          const wildcard = dataParts[1];
+          const proxyId = dataParts[2];
+
+          const now = Date.now();
+          const lastUsed = userRateLimit[chatId] || 0;
+
+          if (now - lastUsed < RATE_LIMIT_SECONDS * 1000) {
+            await answerCallbackQuery(callbackQuery.id, {
+              text: `⏳ Tunggu ${Math.ceil((RATE_LIMIT_SECONDS * 1000 - (now - lastUsed)) / 1000)} detik sebelum mencoba lagi.`,
+              show_alert: true
+            });
+            return new Response("OK");
           }
-        }
 
-        // 🟢 Sistem baru: /getlinksub
-        else if (action === 'linktype') {
-          // value: vless / clash
-          await handleMethodSelection(chatId, value, messageId);
-        }
-
-        else if (action === 'method') {
-          // value: no / wildcard / sni
-          if (value === 'no') {
-            await generateConfigNoWS(chatId, extra, messageId); // extra = clash/vless
-          } else {
-            await handleSubdomainSelection(chatId, value, extra, messageId);
-          }
-        }
-
-        else if (action === 'wildcard' || action === 'sni') {
-          const domain = value; // subdomain
-          const linkType = extra; // clash/vless
+          userRateLimit[chatId] = now;
 
           await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
-            parse_mode: "MarkdownV2"
+            parse_mode: "Markdown",
           });
 
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          try {
-            await deleteMessage(chatId, messageId);
-          } catch (e) {
-            console.warn("Gagal menghapus pesan:", e.message);
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await deleteMessage(chatId, messageId);
+          await generateConfigWithWildcard(chatId, wildcard, proxyId, messageId);
+
+        } else if (action === "sni" && dataParts.length === 3) {
+          const sni = dataParts[1];
+          const proxyId = dataParts[2];
+
+          // Validasi SNI
+          if (!/^[a-zA-Z0-9.-]+$/.test(sni)) {
+            await sendMessage(chatId, "SNI tidak valid.", { reply_to_message_id: messageId });
+            return new Response("OK");
           }
 
-          if (action === 'wildcard') {
-            await generateConfigWithWildcard(chatId, domain, linkType, messageId);
-          } else {
-            await generateConfigWithSni(chatId, domain, linkType, messageId);
-          }
-        }
+          // Feedback visual "processing..."
+          await editMessageText(chatId, messageId, "```RUNNING\nHarap menunggu, sedang memproses...\n```", {
+            parse_mode: "MarkdownV2",
+          });
 
-        // 🔴 Tidak dikenali
-        else {
-          await sendMessage(chatId, "❌ Aksi tidak dikenal.");
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await deleteMessage(chatId, messageId); // Ini yang hilang di versi sebelumnya
+
+          await generateConfigWithSni(chatId, sni, proxyId, messageId);
         }
 
         return new Response("OK");
       }
 
       return new Response("OK");
+
     } catch (err) {
       console.error("Webhook Error:", err);
       return new Response("Internal Server Error", { status: 500 });
@@ -198,51 +204,48 @@ async function handleRequest(request) {
   return new Response("Not Found", { status: 404 });
 }
 
-async function handleMessage(text, chatId, messageId, userId) {
-      if (text === '/start') return await sendStartMessage(chatId, messageId);
-      if (text === '/proxy') return await sendProxyList(chatId, messageId);
-      if (text === '/listwildcard') return await sendWildcardList(chatId, messageId);
-      if (text === '/listsni') return await sendSniList(chatId, messageId);
-      if (text === '/allstatus') return await sendAllProxyStatus(chatId, messageId);
-      if (text === "/donasi") return await handleCommand("/donasi", chatId, messageId);
-      if (text === '/getlinksub') {
-    return await handleGetLinkSub(chatId, messageId);
-      
+// Fungsi menangani berbagai perintah
+async function handleMessage(text, chatId, messageId) {
+  if (text === "/start") return await sendStartMessage(chatId, messageId);
+  if (text === "/proxy") return await sendProxyList(chatId, messageId);
+  if (text === "/listwildcard") return await sendWildcardList(chatId, messageId);
+  if (text === "/allstatus") return await sendAllProxyStatus(chatId, messageId);
+  if (text === "/donasi") return await handleCommand("/donasi", chatId, messageId);
 
-      // Cek status proxy berdasarkan IP:Port
-      if (text.includes(':')) {
-        return await checkProxyByUserInput(chatId, text, messageId);
-      }
-    }
+  if (text.includes(":")) {
+    return await checkProxy2ByUserInput(chatId, text, messageId);
+  }
+}
 
+// Fungsi menangani perintah tambahan
 async function handleCommand(command, chatId, messageId) {
   if (command === "/donasi") {
     const messageText = "Silahkan berdonasi karena sedekah itu pahalanya luar biasa.";
     const inlineKeyboard = {
-      reply_markup: {
-        inline_keyboard: [[{ text: "DONASI", url: "https://sociabuzz.com/mstkkee3/donate" }]],
-      },
+      inline_keyboard: [[{ text: "DONASI", url: "https://sociabuzz.com/mstkkee3/donate" }]],
     };
 
-    return await sendMessage(chatId, messageText, inlineKeyboard, messageId);
+    return await sendMessage(chatId, messageText, messageId, {
+      reply_markup: inlineKeyboard
+    });
   }
 }
 
-// Fungsi untuk mengirim pesan /start dengan foto
-async function sendStartMessage(chatId, messageId) {
-  const message = 'Selamat datang di mstkkee3\n\nkirimkan proxy untuk di cek statusnya, format ip:port maksimal 20 proxy, dipisahkan dengan enter contoh 192.168.1.0:443\n192.168.1.1:8443\ndst\n\n/proxy membuat config VLESS dari daftar proxy\n/listwildcard melihat daftar wildcard\n/allstatus melihat semua status proxy\n/donasi silahkan jika ingin donasi';
 
-  const photoUrl = 'https://raw.githubusercontent.com/parasix/juju/main/JP-Kikuchi-Hina.jpg'; // Ganti dengan URL gambar Anda
+// Fungsi untuk mengirim pesan /start dengan foto
+async function sendStartMessage(chatId, replyToMessageId = null) {
+  const message = 'Selamat datang di mstkkee3\n\nkirimkan proxy untuk di cek statusnya, format ip:port maksimal 20 proxy, dipisahkan dengan enter contoh 192.168.1.0:443\n192.168.1.1:8443\ndst\n\n/proxy membuat config VLESS dari daftar proxy\n\n/donasi silahkan jika ingin donasi\n\n/listwildcard melihat daftar wildcard\n\n/allstatus melihat semua status proxy.';
+
+  const photoUrl = 'https://pixabay.com/id/photos/wanita-anime-karakter-kecantikan-9054320/';
 
   const payload = {
     chat_id: chatId,
     photo: photoUrl,
     caption: message,
-    parse_mode: 'Markdown',
   };
 
-  if (messageId) {
-    payload.reply_to_message_id = messageId;
+  if (replyToMessageId) {
+    payload.reply_to_message_id = replyToMessageId;
   }
 
   const response = await fetch(`${TELEGRAM_API_URL}/sendPhoto`, {
@@ -252,12 +255,10 @@ async function sendStartMessage(chatId, messageId) {
   });
 
   const responseBody = await response.json();
-  return response.ok
-    ? new Response('OK')
-    : new Response(`Error: ${responseBody.description}`, { status: 500 });
+  return response.ok ? new Response('OK') : new Response(`Error: ${responseBody.description}`, { status: 500 });
 }
 
-async function sendProxyList(chatId, messageId = null) {
+async function sendProxyList(chatId, replyToMessageId = null) {
   const message = 'Pilih SERVER/ISP untuk membuat config VLESS:';
 
   const keyboard = {
@@ -266,12 +267,14 @@ async function sendProxyList(chatId, messageId = null) {
     ])
   };
 
-  return sendMessage(chatId, message, { reply_markup: keyboard }, messageId);
+  return sendMessage(chatId, message, replyToMessageId, {
+    reply_markup: keyboard
+  });
 }
 
 
 // Fungsi untuk mengirim daftar wildcard
-async function sendWildcardList(chatId, messageId = null) {
+async function sendWildcardList(chatId, replyToMessageId = null) {
   const wildcardList = `\`\`\`WILDCARD
 ava.game.naver.com.mstkkee3.biz.id\n
 support.zoom.us.mstkkee3.biz.id\n
@@ -280,37 +283,20 @@ graph.instagram.com.mstkkee3.biz.id\n
 zaintest.vuclip.com.mstkkee3.biz.id\n
 edu.ruangguru.com.mstkkee3.biz.id\n
 api.midtrans.com.mstkkee3.biz.id\n
+quiz.int.vidio.com.mstkkee3.biz.id\n
 bakrie.ac.id.mstkkee3.biz.id\n
 blog.webex.com.mstkkee3.biz.id\n
 investors.spotify.com.mstkkee3.biz.id\n
 investor.fb.com.mstkkee3.biz.id\n
-help.viu.com.mstkkee3.biz.id
+untar.ac.id.mstkkee3.biz.id
 \`\`\``;
 
-  return sendMessage(chatId, wildcardList, { parse_mode: 'Markdown' }, messageId);
+  return sendMessage(chatId, wildcardList, replyToMessageId, {
+    parse_mode: 'Markdown'
+  });
 }
 
-async function sendSniList(chatId, messageId = null) {
-  const sniList = `\`\`\`SNI
-ava.game.naver.com.mstkkee3.biz.id\n
-support.zoom.us.mstkkee3.biz.id\n
-cache.netflix.com.mstkkee3.biz.id\n
-graph.instagram.com.mstkkee3.biz.id\n
-zaintest.vuclip.com.mstkkee3.biz.id\n
-edu.ruangguru.com.mstkkee3.biz.id\n
-api.midtrans.com.mstkkee3.biz.id\n
-bakrie.ac.id.mstkkee3.biz.id\n
-blog.webex.com.mstkkee3.biz.id\n
-investors.spotify.com.mstkkee3.biz.id\n
-investor.fb.com.mstkkee3.biz.id\n
-help.viu.com.mstkkee3.biz.id
-\`\`\``;
-
-  return sendMessage(chatId, sniList, { parse_mode: 'Markdown' }, messageId);
-}
-
-
-async function checkProxy2(proxy) {
+async function checkProxy(proxy) {
     try {
         const response = await fetch(`https://api.bodong.workers.dev/?key=masbodong&ip=${proxy.host}:${proxy.port}`);
         if (!response.ok) throw new Error("API tidak merespons dengan benar");
@@ -323,29 +309,29 @@ async function checkProxy2(proxy) {
     }
 }
 
-async function sendAllProxyStatus(chatId, messageId = null) {
+async function sendAllProxyStatus(chatId, replyToMessageId = null) {
   const processingMessage = await sendTemporaryMessage(chatId, `
-\`\`\`PROCESSING\nSedang memeriksa semua status proxy, harap tunggu sebentar...\`\`\``, messageId);
+\`\`\`PROCESSING\nSedang memeriksa semua status proxy, harap tunggu sebentar...\`\`\``, replyToMessageId);
 
   const proxies = [
-    { id: 1, server: '(SG) Digitalocean, LLC 🇸🇬', host: '178.128.80.43', port: 443, path: '/sg-do' },
-    { id: 2, server: '(SG) Oracle Corporation 🇸🇬', host: '213.35.108.135', port: 12596, path: '/sg-orcl' },
-    { id: 3, server: '(SG) Godaddy.com, LLC 🇸🇬', host: '97.74.82.87', port: 45837, path: '/sg-gddy' },
-    { id: 4, server: '(SG) Amazon.com, Inc 🇸🇬', host: '13.228.142.218', port: 443, path: '/sg-amz' },
-    { id: 5, server: '(SG) Tcloudnet 🇸🇬', host: '154.91.84.10', port: 8443, path: '/sg-tcloud' },
-    { id: 6, server: '(SG) AKILE LTD 🇸🇬', host: '185.81.29.113', port: 8080, path: '/sg-akl' },
-    { id: 7, server: '(SG) LEASEWEB SINGAPORE 🇸🇬', host: '167.253.158.63', port: 2053, path: '/sg-lswb' },
-    { id: 8, server: '(SG) Hetzner Online 🇸🇬', host: '5.223.49.4', port: 2053, path: '/sg-hzr' },
-    { id: 9, server: '(SG) Regxa Company🇸🇬', host: '206.206.76.208', port: 2053, path: '/sg-rgxa' },
-    { id: 10, server: '(SG) OVH SAS 🇸🇬', host: '51.79.158.58', port: 8443, path: '/sg-ovh' },
-    { id: 11, server: '(SG) Melbikomas Uab 🇸🇬', host: '91.192.81.154', port: 2053, path: '/sg-melbi' },
-    { id: 12, server: '(ID) Pt Pusat Media 🇮🇩', host: '103.6.207.108', port: 8080, path: '/id-pusat' },
-    { id: 13, server: '(ID) PT. Telekomunikasi 🇮🇩', host: '36.95.152.58', port: 12137, path: '/id-tksi' },
-    { id: 14, server: '(ID) Amazon.com, Inc 🇮🇩', host: '43.218.77.16', port: 443, path: '/id-amz' },
-    { id: 15, server: '(ID) Rumahweb 🇮🇩', host: '203.194.112.119', port: 8443, path: '/id-rmhwb' },
-  ];
+  { id: 1, server: '(SG) Digitalocean, LLC 🇸🇬', host: '178.128.80.43', port: 443, path: '/sg-do' },
+  { id: 2, server: '(SG) Oracle Corporation 🇸🇬', host: '213.35.108.135', port: 12596, path: '/sg-orcl' },
+  { id: 3, server: '(SG) Godaddy.com, LLC 🇸🇬', host: '97.74.82.87', port: 45837, path: '/sg-gddy' },
+  { id: 4, server: '(SG) Amazon.com, Inc 🇸🇬', host: '13.228.142.218', port: 443, path: '/sg-amz' },
+  { id: 5, server: '(SG) Tcloudnet 🇸🇬', host: '154.91.84.10', port: 8443, path: '/sg-tcloud' },
+  { id: 6, server: '(SG) AKILE LTD 🇸🇬', host: '185.81.29.113', port: 8080, path: '/sg-akl' },
+  { id: 7, server: '(SG) LEASEWEB SINGAPORE 🇸🇬', host: '167.253.158.63', port: 2053, path: '/sg-lswb' },
+  { id: 8, server: '(SG) Hetzner Online 🇸🇬', host: '5.223.49.4', port: 2053, path: '/sg-hzr' },
+  { id: 9, server: '(SG) Regxa Company🇸🇬', host: '206.206.76.208', port: 2053, path: '/sg-rgxa' },
+  { id: 10, server: '(SG) OVH SAS 🇸🇬', host: '51.79.158.58', port: 8443, path: '/sg-ovh' },
+  { id: 11, server: '(SG) Melbikomas Uab 🇸🇬', host: '91.192.81.154', port: 2053, path: '/sg-melbi' },
+  { id: 12, server: '(ID) Pt Pusat Media 🇮🇩', host: '103.6.207.108', port: 8080, path: '/id-pusat' },
+  { id: 13, server: '(ID) PT. Telekomunikasi 🇮🇩', host: '36.95.152.58', port: 12137, path: '/id-tksi' },
+  { id: 14, server: '(ID) Amazon.com, Inc 🇮🇩', host: '43.218.77.16', port: 443, path: '/id-amz' },
+  { id: 15, server: '(ID) Rumahweb 🇮🇩', host: '203.194.112.119', port: 8443, path: '/id-rmhwb' },
+];
 
-  const results = await Promise.allSettled(proxies.map(checkProxy2));
+  const results = await Promise.allSettled(proxies.map(checkProxy));
 
   let statusText = `\`\`\`🔍Status:\n`;
 
@@ -357,8 +343,7 @@ async function sendAllProxyStatus(chatId, messageId = null) {
       const proxyStatus = isActive ? "✅ AKTIF" : "❌ NONAKTIF";
 
       statusText += `🌐 Proxy  : ${proxy.host}:${proxy.port}\n`;
-      statusText += `📂 Path   : ${proxy.path}\n`;
-      statusText += `📡 ISP    : ${data.isp || "-"} ${data.flag}\n`;
+      statusText += `📡 ISP    : ${data.isp || "-"} ${data.flag || ""}\n`;
       statusText += `🌍 Negara : ${data.country || ""}\n`;
       statusText += `🏙️ Lokasi : ${data.city || data.region || "-"}\n`;
       statusText += `🛡️ Status : ${proxyStatus}\n`;
@@ -370,8 +355,15 @@ async function sendAllProxyStatus(chatId, messageId = null) {
 
   statusText += `\`\`\``;
 
-  // Ganti dengan editMessageText, bukan kirim baru
-  return editMessageText(chatId, processingMessage.message_id, statusText, { parse_mode: "Markdown" });
+  try {
+    await deleteMessage(chatId, processingMessage.message_id);
+  } catch (error) {
+    console.error("Gagal menghapus pesan proses:", error);
+  }
+
+  return sendMessage(chatId, statusText, replyToMessageId, {
+    parse_mode: "Markdown"
+  });
 }
 
 // Fungsi untuk menghasilkan UUID random
@@ -396,7 +388,7 @@ async function generateVlessConfig(chatId, proxyId, messageId) {
   const keyboard = {
     inline_keyboard: [
       [
-        { text: 'Tidak', callback_data: `method:no:${proxyId}` },
+        { text: 'Websocket', callback_data: `method:ws:${proxyId}` },
         { text: 'Wildcard', callback_data: `method:wc:${proxyId}` }
       ],
       [{ text: 'SNI/TLS', callback_data: `method:sni:${proxyId}` }]
@@ -411,12 +403,14 @@ async function generateVlessConfig(chatId, proxyId, messageId) {
 
 async function handleMethodSelection(chatId, method, proxyId, messageId) {
   const selectedProxy = proxies.find(p => p.id == proxyId);
-  if (!selectedProxy) {
-    return await sendMessage(chatId, '❌ Proxy tidak ditemukan.', {}, messageId);
-  }
+  if (!selectedProxy) return await sendMessage(chatId, '❌ Proxy tidak ditemukan.');
 
-  if (method === 'no') {
-    return await generateConfigNoWS(chatId, proxyId, messageId);
+  if (method === 'ws') {
+    // Simpan status pengguna untuk menangani input bug WS
+    userSession[chatId] = { method: 'ws', proxyId };
+
+    const message = '⚡ *Silakan kirimkan Bug WS yang ingin dipakai:*';
+    return await editMessageText(chatId, messageId, message, { parse_mode: "Markdown" });
   } else if (method === 'wc') {
     // Tampilkan daftar wildcard
     const wildcardList = '🔹 *Pilih Salah Satu Subdomain*';
@@ -471,47 +465,42 @@ async function handleMethodSelection(chatId, method, proxyId, messageId) {
 }
 
 
-async function generateConfigNoWS(chatId, proxyId, messageId) {
+async function generateConfigWithBug(chatId, bug, proxyId, messageId) {
   try {
     const selectedProxy = proxies.find(p => p.id == proxyId);
-    if (!selectedProxy) {
-      return await sendMessage(chatId, '❌ Proxy tidak ditemukan.', {
-        reply_to_message_id: messageId
-      });
-    }
+    if (!selectedProxy) return sendMessage(chatId, '❌ Proxy tidak ditemukan.');
 
-    // Edit pesan lama menjadi RUNNING
-    await editMessageText(chatId, messageId, "```RUNNING\nSilahkan menunggu, sedang memproses...\n```", {
-      parse_mode: "MarkdownV2",
-      reply_markup: { inline_keyboard: [] }
-    });
+    const processingMessage = await sendTemporaryMessage(chatId, `
+\`\`\`RUNNING\nHarap menunggu, sedang memproses...\`\`\``, messageId);
 
     await new Promise(resolve => setTimeout(resolve, 3000));
-    await deleteMessage(chatId, messageId);
+    await deleteMessage(chatId, processingMessage.message_id);
 
     const uuid = generateUUID();
-    const bugServer = `${servervless}`;
+    const bugServer = `${servervless}`
 
-    const vlessRawUrl = `vless://${uuid}@${bugServer}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=${selectedProxy.path}#${selectedProxy.server}`;
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(vlessRawUrl)}`;
-
+    const vlessRawUrl = `vless://${uuid}@${bug}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=${selectedProxy.path}#${selectedProxy.server}`;
+    
+const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(vlessRawUrl)}`;
+    
     await sendPhoto(chatId, qrUrl, {
-      caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',
-      parse_mode: 'Markdown'
-    });
+  caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',  // atau caption informatif
+  parse_mode: 'Markdown'
+});
 
-    const config = `
+const config = `
 𝗞𝗼𝗻𝗳𝗶𝗴𝘂𝗿𝗮𝘀𝗶 𝘃𝗹𝗲𝘀𝘀 𝗮𝗻𝗱𝗮 𝗯𝗲𝗿𝗵𝗮𝘀𝗶𝗹 𝗱𝗶𝗯𝘂𝗮𝘁
 𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`
-𝗣𝗮𝘁𝗵 : \`${selectedProxy.path}\`
-𝗠𝗲𝘁𝗼𝗱𝗲 : 𝗡𝗢
+𝗣𝗮𝘁𝗵 :  \`${selectedProxy.path}\`
+𝗠𝗲𝘁𝗼𝗱𝗲 : 𝘄𝗲𝗯𝘀𝗼𝗰𝗸𝗲𝘁  
+𝗕𝘂𝗴 𝗪𝗦 : \`${bug}\`
 
 \`\`\`VLESS\n${vlessRawUrl}\`\`\`
 
 \`\`\`yaml
 proxies:
 - name: ${selectedProxy.server}
-  server: ${bugServer}
+  server: ${bug}
   port: 443
   type: vless
   uuid: ${uuid}
@@ -542,14 +531,13 @@ proxies:
 ╰━━━━━━━━━━━━━━━━━━━━━╯
 `;
 
-    return sendMessage(chatId, config, {
-      parse_mode: "Markdown", messageId
+    return sendMessage(chatId, config, messageId, { parse_mode: "Markdown"
     });
 
   } catch (error) {
-    console.error("generateConfigNoWS ERROR:", error);
+    console.error("generateConfigWithBug ERROR:", error);
     return sendMessage(chatId, `❌ Gagal membuat konfigurasi:\n\`\`\`\n${error.message}\n\`\`\``, {
-      parse_mode: "Markdown", messageId
+      parse_mode: "Markdown"
     });
   }
 }
@@ -564,9 +552,9 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
 
     const uuid = generateUUID();
     const bugServer = `${wildcard}.${servervless}`;
-    const vlessRawUrl = `vless://${uuid}@${wildcard}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=${selectedProxy.path}#${selectedProxy.server}`;
-    
-const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(vlessRawUrl)}`;
+    const vlessUrl = `\`\`\`VLESS\nvless://${uuid}@${wildcard}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=/${selectedProxy.host}-${selectedProxy.port}#${selectedProxy.server}\`\`\``;
+
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(vlessUrl)}`;
 
     // Hapus tombol salin kode, jadi keyboard kosong atau bisa dihapus juga reply_markup
     await sendPhoto(chatId, qrUrl, {
@@ -574,14 +562,13 @@ const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=1
   parse_mode: 'Markdown'
 });
 
-const config = `
-𝗞𝗼𝗻𝗳𝗶𝗴𝘂𝗿𝗮𝘀𝗶 𝘃𝗹𝗲𝘀𝘀 𝗮𝗻𝗱𝗮 𝗯𝗲𝗿𝗵𝗮𝘀𝗶𝗹 𝗱𝗶𝗯𝘂𝗮𝘁
-𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`
-𝗣𝗮𝘁𝗵 :  \`${selectedProxy.path}\`
+    const config = `
+𝗞𝗼𝗻𝗳𝗶𝗴𝘂𝗿𝗮𝘀𝗶 𝘃𝗹𝗲𝘀𝘀 𝗮𝗻𝗱𝗮 𝗯𝗲𝗿𝗵𝗮𝘀𝗶𝗹 𝗱𝗶𝗯𝘂𝗮𝘁  
+𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`  
 𝗠𝗲𝘁𝗼𝗱𝗲 : 𝘄𝗶𝗹𝗱𝗰𝗮𝗿𝗱  
-𝗦𝘂𝗯𝗱𝗼𝗺𝗮𝗶𝗻 : \`${wildcard}\`
+𝗕𝘂𝗴 𝗪𝗦 : \`${wildcard}\`
 
-\`\`\`VLESS\n${vlessRawUrl}\`\`\`
+${vlessUrl}
 
 \`\`\`yaml
 proxies:  
@@ -596,7 +583,7 @@ proxies:
   network: ws  
   servername: ${bugServer}  
   ws-opts:  
-    path: ${selectedProxy.path}
+    path: /${selectedProxy.host}-${selectedProxy.port}  
     headers:  
       Host: ${bugServer}  
   udp: true\`\`\`
@@ -626,8 +613,6 @@ proxies:
   }
 }
 
-
-
 async function generateConfigWithSni(chatId, sni, proxyId, messageId) {
   try {
     const selectedProxy = proxies.find((p) => p.id == proxyId);
@@ -644,7 +629,7 @@ const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=1
     // Hapus tombol salin kode, jadi keyboard kosong atau bisa dihapus juga reply_markup
     await sendPhoto(chatId, qrUrl, {
   caption: '𝗦𝗰𝗮𝗻 𝗱𝗶 𝗮𝗽𝗽 𝘃2𝗿𝗮𝘆𝗡𝗚, 𝗚𝗮𝘁𝗰𝗵𝗮𝗡𝗚, 𝗱𝘀𝘁',  // atau caption informatif
-  parse_mode: 'Markdown'
+  parse_mode: 'HTML'
 });
 
 const config = `
@@ -690,97 +675,22 @@ proxies:
 ╰━━━━━━━━━━━━━━━━━━━━━╯  
 `;
 
-    return sendMessage(chatId, config, { parse_mode: "Markdown" });
+    return sendMessage(chatId, config, { parse_mode: "HTML" });
 
   } catch (error) {
     const errorMsg = `❌ Gagal membuat konfigurasi:\n<pre>${error.message}</pre>`;
     console.error("generateConfigWithSniERROR:", error);
-    return sendMessage(chatId, errorMsg, { parse_mode: "Markdown" });
+    return sendMessage(chatId, errorMsg, { parse_mode: "HTML" });
   }
-}
-
-async function handleGetLinkSub(chatId, messageId) {
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: 'VLESS', callback_data: 'linktype:vless' },
-        { text: 'Clash', callback_data: 'linktype:clash' }
-      ]
-    ]
-  };
-
-  await sendMessage(chatId, '📡 Pilih jenis link yang ingin kamu ambil:', {
-    reply_markup: keyboard
-  });
-}
-
-async function handleMethodGetlink(chatId, linkType, messageId) {
-  const keyboard = {
-    inline_keyboard: [
-      [
-        { text: 'Tidak', callback_data: `method_getlink:no:${linkType}` },
-        { text: 'Wildcard', callback_data: `method_getlink:wildcard:${linkType}` }
-      ],
-      [{ text: 'SNI', callback_data: `method_getlink:sni:${linkType}` }]
-    ]
-  };
-  await editMessageText(chatId, messageId, '🔌 Pilih metode inject:', {
-    reply_markup: keyboard
-  });
-}
-
-async function handleSubdomainSelection(chatId, method, linkType, messageId) {
-  let list = [];
-  if (method === 'wildcard') list = wildcardList;
-  if (method === 'sni') list = sniList;
-
-  if (method === 'no') {
-    const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=no&bug=mstkkee3.biz.id`;
-    const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *no*\nSubdomain : *mstkkee3.biz.id*\nLink : ${link}`;
-    return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
-  }
-
-  const keyboard = {
-    inline_keyboard: list.map(domain => {
-      return [{ text: domain, callback_data: `${method}_getlink:${domain}:${linkType}` }];
-    })
-  };
-
-  return await editMessageText(chatId, messageId, `🌐 Pilih salah satu subdomain:`, {
-    reply_markup: keyboard,
-    parse_mode: 'Markdown'
-  });
-}
-
-async function generateConfigNoWS(chatId, linkType, messageId) {
-  const bugServer = `${servervless}`;
-  const domain = 'mstkkee3.biz.id';
-  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=no&bug=${bugServer}`;
-  const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *no*\nSubdomain : *${domain}*\nLink : ${link}`;
-  return await editMessageText(chatId, messageId, text, { parse_mode: 'Markdown' });
-}
-
-async function generateConfigWithWildcard(chatId, domain, linkType, messageId) {
-  const bugServer = `${domain}.${servervless}`;
-  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=wildcard&bug=${bugServer}`;
-  const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *wildcard*\nSubdomain : *${bugServer}*\nLink : ${link}`;
-  return await sendMessage(chatId, text, { parse_mode: 'Markdown' });
-}
-
-async function generateConfigWithSni(chatId, domain, linkType, messageId) {
-  const bugServer = `${domain}.${servervless}`;
-  const link = `https://mstkkee3.biz.id/sub/${linkType}/?type=sni&bug=${bugServer}`;
-  const text = `✅ Anda memilih konfigurasi:\n\nSub : *${linkType}*\nType : *sni*\nSubdomain : *${bugServer}*\nLink : ${link}`;
-  return await sendMessage(chatId, text, { parse_mode: 'Markdown' });
 }
 
 async function sendTemporaryMessage(chatId, text, replyToMessageId = null) {
-  const payload = { 
-    chat_id: chatId, 
-    text, 
-    parse_mode: 'Markdown' 
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: 'Markdown',
   };
-  
+
   if (replyToMessageId) {
     payload.reply_to_message_id = replyToMessageId;
   }
@@ -813,14 +723,14 @@ async function deleteMessage(chatId, messageId) {
   }
 }
 // Fungsi untuk mengirim pesan ke Telegram
-async function sendMessage(chatId, text, options = {}, replyTo = null) {
+async function sendMessage(chatId, text, replyToMessageId = null, options = {}) {
   const payload = {
     chat_id: chatId,
     text,
-    parse_mode: options.parse_mode || 'Markdown', // Default ke Markdown
-    ...options,
+    parse_mode: options.parse_mode || 'Markdown',
+    reply_to_message_id: replyToMessageId || undefined,
+    reply_markup: options.reply_markup || undefined
   };
-  if (replyTo) payload.reply_to_message_id = replyTo;
 
   const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
     method: 'POST',
@@ -829,12 +739,13 @@ async function sendMessage(chatId, text, options = {}, replyTo = null) {
   });
 
   const responseBody = await response.json();
-  return response.ok
-    ? new Response('OK')
-    : new Response(`Error: ${responseBody.description}`, { status: 500 });
+  if (!response.ok) {
+    console.error("Gagal kirim pesan:", responseBody);
+  }
+
+  return response.ok ? responseBody.result : null;
 }
 
-// Fungsi untuk mengedit pesan
 async function editMessageText(chatId, messageId, text, options = {}) {
   const payload = {
     chat_id: chatId,
@@ -851,7 +762,7 @@ async function editMessageText(chatId, messageId, text, options = {}) {
 }
 
 async function sendPhoto(chatId, photoUrl, options = {}) {
-  const token = "7557864997:AAHfIzz6ZA_8Bs9M-_m7EcU5J_g5kVRwrzs"; // ganti sesuai nama variabel token kamu
+  const token = "7653509231:AAEEaEv9FK6oMMtaEftPzjXOIZYzqAmB8Yg"; // ganti sesuai nama variabel token kamu
   const url = `https://api.telegram.org/bot${token}/sendPhoto`;
 
   const body = {
@@ -865,6 +776,4 @@ async function sendPhoto(chatId, photoUrl, options = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
-  }
 }
-
