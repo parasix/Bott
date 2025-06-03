@@ -552,9 +552,9 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
 
     const uuid = generateUUID();
     const bugServer = `${wildcard}.${servervless}`;
-    const vlessUrl = `\`\`\`VLESS\nvless://${uuid}@${wildcard}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=/${selectedProxy.host}-${selectedProxy.port}#${selectedProxy.server}\`\`\``;
+    const vlessRawUrl = `\`\`\`VLESS\nvless://${uuid}@${wildcard}:443?encryption=none&security=tls&sni=${bugServer}&type=ws&host=${bugServer}&path=${selectedProxy.path}#${selectedProxy.server}\`\`\``;
 
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(vlessUrl)}`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=10&data=${encodeURIComponent(vlessRawUrl)}`;
 
     // Hapus tombol salin kode, jadi keyboard kosong atau bisa dihapus juga reply_markup
     await sendPhoto(chatId, qrUrl, {
@@ -566,9 +566,9 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
 𝗞𝗼𝗻𝗳𝗶𝗴𝘂𝗿𝗮𝘀𝗶 𝘃𝗹𝗲𝘀𝘀 𝗮𝗻𝗱𝗮 𝗯𝗲𝗿𝗵𝗮𝘀𝗶𝗹 𝗱𝗶𝗯𝘂𝗮𝘁  
 𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`  
 𝗠𝗲𝘁𝗼𝗱𝗲 : 𝘄𝗶𝗹𝗱𝗰𝗮𝗿𝗱  
-𝗕𝘂𝗴 𝗪𝗦 : \`${wildcard}\`
+𝗦𝘂𝗯𝗱𝗼𝗺𝗮𝗶𝗻 : \`${wildcard}\`
 
-${vlessUrl}
+\`\`\`VLESS\n${vlessRawUrl}\`\`\`
 
 \`\`\`yaml
 proxies:  
@@ -583,7 +583,7 @@ proxies:
   network: ws  
   servername: ${bugServer}  
   ws-opts:  
-    path: /${selectedProxy.host}-${selectedProxy.port}  
+    path: ${selectedProxy.path}
     headers:  
       Host: ${bugServer}  
   udp: true\`\`\`
