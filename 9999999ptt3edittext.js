@@ -284,19 +284,18 @@ async function sendProxyList(chatId, replyToMessageId = null) {
 // Fungsi untuk mengirim daftar wildcard
 async function sendWildcardList(chatId, replyToMessageId = null) {
   const wildcardList = `\`\`\`WILDCARD
-ava.game.naver.com.mstkkee3.biz.id\n
-support.zoom.us.mstkkee3.biz.id\n
-cache.netflix.com.mstkkee3.biz.id\n
-graph.instagram.com.mstkkee3.biz.id\n
-zaintest.vuclip.com.mstkkee3.biz.id\n
-edu.ruangguru.com.mstkkee3.biz.id\n
-api.midtrans.com.mstkkee3.biz.id\n
-quiz.int.vidio.com.mstkkee3.biz.id\n
-bakrie.ac.id.mstkkee3.biz.id\n
-blog.webex.com.mstkkee3.biz.id\n
-investors.spotify.com.mstkkee3.biz.id\n
-investor.fb.com.mstkkee3.biz.id\n
-untar.ac.id.mstkkee3.biz.id
+ava.game.naver.com.mstke3.dpdns.org\n
+support.zoom.us.mstke3.dpdns.org\n
+cache.netflix.com.mstke3.dpdns.org\n
+graph.instagram.com.mstke3.dpdns.org\n
+zaintest.vuclip.com.mstke3.dpdns.org\n
+edu.ruangguru.com.mstke3.dpdns.org\n
+api.midtrans.com.mstke3.dpdns.org\n
+bakrie.ac.id.mstke3.dpdns.org\n
+blog.webex.com.mstke3.dpdns.org\n
+investors.spotify.com.mstke3.dpdns.org\n
+investor.fb.com.mstke3.dpdns.org\n
+unnes.ac.id.mstke3.dpdns.org
 \`\`\``;
 
   return sendMessage(chatId, wildcardList, replyToMessageId, {
@@ -435,7 +434,7 @@ async function handleMethodSelection(chatId, method, proxyId, messageId) {
         [{ text: 'blog.webex.com', callback_data: `wildcard:blog.webex.com:${proxyId}` }],
         [{ text: 'investors.spotify.com', callback_data: `wildcard:investors.spotify.com:${proxyId}` }],
         [{ text: 'investor.fb.com', callback_data: `wildcard:investor.fb.com:${proxyId}` }],
-        [{ text: 'help.viu.com', callback_data: `wildcard:help.viu.com:${proxyId}` }],
+        [{ text: 'unnes.ac.id', callback_data: `wildcard:unnes.ac.id:${proxyId}` }],
       ],
     };
 
@@ -459,7 +458,7 @@ async function handleMethodSelection(chatId, method, proxyId, messageId) {
         [{ text: 'blog.webex.com', callback_data: `sni:blog.webex.com:${proxyId}` }],
         [{ text: 'investors.spotify.com', callback_data: `sni:investors.spotify.com:${proxyId}` }],
         [{ text: 'investor.fb.com', callback_data: `sni:investor.fb.com:${proxyId}` }],
-        [{ text: 'help.viu.com', callback_data: `sni:help.viu.com:${proxyId}` }],
+        [{ text: 'unnes.ac.id', callback_data: `sni:unnes.ac.id:${proxyId}` }],
       ],
     };
 
@@ -500,7 +499,7 @@ const config = `
 𝗞𝗼𝗻𝗳𝗶𝗴𝘂𝗿𝗮𝘀𝗶 𝘃𝗹𝗲𝘀𝘀 𝗮𝗻𝗱𝗮 𝗯𝗲𝗿𝗵𝗮𝘀𝗶𝗹 𝗱𝗶𝗯𝘂𝗮𝘁
 𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`
 𝗣𝗮𝘁𝗵 :  \`${selectedProxy.path}\`
-𝗠𝗲𝘁𝗼𝗱𝗲 : 𝘄𝗲𝗯𝘀𝗼𝗰𝗸𝗲𝘁  
+𝗠𝗲𝘁𝗼𝗱𝗲 : 𝘄𝗲𝗯𝘀𝗼𝗰𝗸𝗲𝘁 
 𝗕𝘂𝗴 𝗪𝗦 : \`${bug}\`
 
 \`\`\`VLESS\n${vlessRawUrl}\`\`\`
@@ -572,8 +571,9 @@ async function generateConfigWithWildcard(chatId, wildcard, proxyId, messageId) 
 
     const config = `
 𝗞𝗼𝗻𝗳𝗶𝗴𝘂𝗿𝗮𝘀𝗶 𝘃𝗹𝗲𝘀𝘀 𝗮𝗻𝗱𝗮 𝗯𝗲𝗿𝗵𝗮𝘀𝗶𝗹 𝗱𝗶𝗯𝘂𝗮𝘁  
-𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`  
-𝗠𝗲𝘁𝗼𝗱𝗲 : 𝘄𝗶𝗹𝗱𝗰𝗮𝗿𝗱  
+𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`
+𝗣𝗮𝘁𝗵 :  \`${selectedProxy.path}\`
+𝗠𝗲𝘁𝗼𝗱𝗲 : 𝘄𝗶𝗹𝗱𝗰𝗮𝗿𝗱
 𝗦𝘂𝗯𝗱𝗼𝗺𝗮𝗶𝗻 : \`${wildcard}\`
 
 \`\`\`VLESS\n${vlessRawUrl}\`\`\`
@@ -642,8 +642,8 @@ const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&margin=1
 
 const config = `
 𝗞𝗼𝗻𝗳𝗶𝗴𝘂𝗿𝗮𝘀𝗶 𝘃𝗹𝗲𝘀𝘀 𝗮𝗻𝗱𝗮 𝗯𝗲𝗿𝗵𝗮𝘀𝗶𝗹 𝗱𝗶𝗯𝘂𝗮𝘁
-𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\` 
-𝗣𝗮𝘁𝗵 :  \`${selectedProxy.path}\` 
+𝗦𝗲𝗿𝘃𝗲𝗿 : \`${selectedProxy.server}\`
+𝗣𝗮𝘁𝗵 :  \`${selectedProxy.path}\`
 𝗠𝗲𝘁𝗼𝗱𝗲 : 𝗦𝗡𝗜/𝗧𝗟𝗦
 𝗦𝘂𝗯𝗱𝗼𝗺𝗮𝗶𝗻 : \`${sni}\`
 
